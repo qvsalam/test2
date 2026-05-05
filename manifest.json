@@ -1,0 +1,45 @@
+{
+  "name": "Iraq Scrapers",
+  "version": "4.0.0",
+  "scrapers": [
+    {
+      "id": "vodu-iraq",
+      "name": "VODU",
+      "description": "VODU Iraqi streaming - movies and TV shows",
+      "version": "2.0.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/vodu.js",
+      "enabled": true,
+      "formats": ["mp4", "m3u8"],
+      "logo": "http://movie.vodu.me/img/vodulogo.png",
+      "contentLanguage": ["ar", "en"]
+    },
+    {
+      "id": "cinemabox-iraq",
+      "name": "CinemaBox",
+      "description": "CinemaBox Iraqi streaming - movies and TV shows",
+      "version": "1.0.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/cinemabox.js",
+      "enabled": true,
+      "formats": ["mp4"],
+      "logo": "https://cinema.albox.co/icons/apple-touch-icon.png",
+      "contentLanguage": ["ar", "en"]
+    },
+    {
+      "id": "cinemana-iraq",
+      "name": "Cinemana",
+      "description": "Cinemana Iraqi streaming - movies, TV shows and anime",
+      "version": "1.0.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/cinemana.js",
+      "enabled": true,
+      "formats": ["mp4"],
+      "logo": "https://cinemana.shabakaty.com/favicon.ico",
+      "contentLanguage": ["ar", "en"]
+    }
+  ]
+}
