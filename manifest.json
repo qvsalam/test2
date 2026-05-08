@@ -1,0 +1,16 @@
+{
+  "name": "Iraq Scrapers",
+  "version": "4.5.0",
+  "scrapers": [
+    {
+      "id": "iraq-master",
+      "name": "Iraq Scrapers",
+      "description": "VODU + CinemaBox + Cinemana — automatic fallback",
+      "version": "1.0.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/master.js",
+      "enabled": true
+    }
+  ]
+}
