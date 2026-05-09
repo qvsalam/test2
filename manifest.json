@@ -1,0 +1,36 @@
+{
+  "name": "Iraq Scrapers",
+  "version": "4.5.0",
+  "scrapers": [
+    {
+      "id": "vodu-iraq",
+      "name": "VODU",
+      "description": "VODU Iraqi streaming - movies and TV shows",
+      "version": "2.3.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/vodu.js",
+      "enabled": true
+    },
+    {
+      "id": "cinemabox-iraq",
+      "name": "CinemaBox",
+      "description": "CinemaBox Iraqi streaming - movies and TV shows",
+      "version": "1.3.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/cinemabox.js",
+      "enabled": true
+    },
+    {
+      "id": "cinemana-iraq",
+      "name": "Cinemana",
+      "description": "Cinemana Iraqi streaming - movies, TV shows and anime",
+      "version": "1.4.0",
+      "author": "qvsalam",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/cinemana.js",
+      "enabled": true
+    }
+  ]
+}
