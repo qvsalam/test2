@@ -1,7 +1,7 @@
-// VODU Provider — Iraq Scrapers v4.5.0
+// VODU Provider — Iraq Scrapers v4.6.0
 
 var TMDB_KEY = "ee8ac8a9044c09a11cc362033f98c735";
-var QUALITY_ORDER = { "4K": 0, "2160p": 0, "1080p": 1, "720p": 2, "480p": 3, "360p": 4, "240p": 5, "HLS": 6, "HD": 7 };
+var QUALITY_ORDER = { "1080p": 0, "720p": 1, "480p": 2, "360p": 3, "240p": 4, "HLS": 5, "HD": 6 };
 
 function sortByQuality(streams) {
   return streams.sort(function(a, b) {
@@ -9,6 +9,12 @@ function sortByQuality(streams) {
     var ob = QUALITY_ORDER[b.quality] != null ? QUALITY_ORDER[b.quality] : 99;
     return oa - ob;
   });
+}
+
+function normalizeVoduQuality(q) {
+  q = String(q || "HD");
+  if (q === "4K" || q === "2160p") return "1080p";
+  return q;
 }
 
 function fetchTMDBTitles(tmdbId, mediaType) {
@@ -35,12 +41,12 @@ function cleanText(s) {
 }
 
 function qualityRank(q) {
+  q = normalizeVoduQuality(q);
   return QUALITY_ORDER[q] != null ? QUALITY_ORDER[q] : 99;
 }
 
-function strictQuality(text, allow4k) {
+function strictQuality(text) {
   text = cleanText(text).toLowerCase();
-  if (allow4k && /(^|[^a-z0-9])(2160p|2160|4k|uhd)([^a-z0-9]|$)/i.test(text)) return "4K";
   if (/(^|[^0-9])1080p?([^0-9]|$)/i.test(text)) return "1080p";
   if (/(^|[^0-9])720p?([^0-9]|$)/i.test(text)) return "720p";
   if (/(^|[^0-9])480p?([^0-9]|$)/i.test(text)) return "480p";
@@ -52,8 +58,6 @@ function strictQuality(text, allow4k) {
 function qualityFromContext(context) {
   context = cleanText(context);
 
-  // Only trust explicit quality/resolution labels from the page context.
-  // Do not detect 4K from random tokens; VODU pages may contain unrelated strings.
   var labelRe = /(?:quality|resolution|res|label|data-quality|data-res|data-label)[^0-9a-z]{0,30}(1080|720|480|360|240)p?/i;
   var m = labelRe.exec(context);
   if (m) return m[1] + "p";
@@ -67,11 +71,11 @@ function qualityFromContext(context) {
 
 function getQ(url, hint) {
   var fromHint = qualityFromContext(hint || "");
-  if (fromHint) return fromHint;
+  if (fromHint) return normalizeVoduQuality(fromHint);
 
   var cleanUrl = cleanText(url).split("?")[0];
-  var fromUrl = strictQuality(cleanUrl, true);
-  if (fromUrl) return fromUrl;
+  var fromUrl = strictQuality(cleanUrl);
+  if (fromUrl) return normalizeVoduQuality(fromUrl);
 
   if (/\.m3u8/i.test(url)) return "HLS";
   return "HD";
@@ -86,7 +90,7 @@ function isSkip(url) {
 function addVideo(out, seen, url, hint) {
   url = cleanText(url);
   if (!url || isSkip(url)) return;
-  var q = getQ(url, hint || "");
+  var q = normalizeVoduQuality(getQ(url, hint || ""));
   var key = url;
   if (seen[key] != null) {
     var old = out[seen[key]];
@@ -125,6 +129,16 @@ function absoluteUrl(base, child) {
   return base.substring(0, base.lastIndexOf("/") + 1) + child;
 }
 
+function qualityFromHeight(height) {
+  height = parseInt(height, 10) || 0;
+  if (height >= 1000) return "1080p";
+  if (height >= 700) return "720p";
+  if (height >= 470) return "480p";
+  if (height >= 350) return "360p";
+  if (height >= 200) return "240p";
+  return "HLS";
+}
+
 function parseM3U8Variants(masterUrl, text) {
   var lines = cleanText(text).split(/\r?\n/);
   var variants = [];
@@ -133,16 +147,9 @@ function parseM3U8Variants(masterUrl, text) {
     if (line.indexOf("#EXT-X-STREAM-INF") !== 0) continue;
     var q = null;
     var res = /RESOLUTION=\d+x(\d+)/i.exec(line);
-    if (res) {
-      var h = parseInt(res[1], 10);
-      if (h >= 2000) q = "4K";
-      else if (h >= 1000) q = "1080p";
-      else if (h >= 700) q = "720p";
-      else if (h >= 470) q = "480p";
-      else if (h >= 350) q = "360p";
-      else if (h >= 200) q = "240p";
-    }
-    if (!q) q = strictQuality(line, true) || "HLS";
+    if (res) q = qualityFromHeight(res[1]);
+    if (!q) q = strictQuality(line) || "HLS";
+    q = normalizeVoduQuality(q);
 
     var next = "";
     for (var j = i + 1; j < lines.length; j++) {
@@ -173,6 +180,7 @@ function expandItems(items) {
         var item = groups[i][j];
         if (!item.url || seen[item.url]) continue;
         seen[item.url] = true;
+        item.quality = normalizeVoduQuality(item.quality);
         out.push(item);
       }
     }
@@ -229,7 +237,7 @@ function tryLinks(links, idx, mediaType, season, episode) {
 }
 
 function makeStream(url, quality) {
-  quality = quality || getQ(url, "");
+  quality = normalizeVoduQuality(quality || getQ(url, ""));
   return { title: "VODU " + quality, name: "VODU", provider: "VODU", url: url, quality: quality, type: url.indexOf(".m3u8") > -1 ? "hls" : "direct" };
 }
 
