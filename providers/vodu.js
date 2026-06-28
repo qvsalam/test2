@@ -1,4 +1,4 @@
-// VODU Provider — Iraq Scrapers v4.6.0
+// VODU Provider — Iraq Scrapers v4.7.0
 
 var TMDB_KEY = "ee8ac8a9044c09a11cc362033f98c735";
 var QUALITY_ORDER = { "1080p": 0, "720p": 1, "480p": 2, "360p": 3, "240p": 4, "HLS": 5, "HD": 6 };
@@ -55,6 +55,16 @@ function strictQuality(text) {
   return null;
 }
 
+function looseQualityFromUrl(url) {
+  url = cleanText(url).toLowerCase();
+  if (/[_\-/=.](1080|fhd)([_\-/=.\?&]|$)|1080p/i.test(url)) return "1080p";
+  if (/[_\-/=.](720)([_\-/=.\?&]|$)|720p/i.test(url)) return "720p";
+  if (/[_\-/=.](480)([_\-/=.\?&]|$)|480p/i.test(url)) return "480p";
+  if (/[_\-/=.](360)([_\-/=.\?&]|$)|360p/i.test(url)) return "360p";
+  if (/[_\-/=.](240)([_\-/=.\?&]|$)|240p/i.test(url)) return "240p";
+  return null;
+}
+
 function qualityFromContext(context) {
   context = cleanText(context);
 
@@ -74,7 +84,7 @@ function getQ(url, hint) {
   if (fromHint) return normalizeVoduQuality(fromHint);
 
   var cleanUrl = cleanText(url).split("?")[0];
-  var fromUrl = strictQuality(cleanUrl);
+  var fromUrl = strictQuality(cleanUrl) || looseQualityFromUrl(cleanUrl);
   if (fromUrl) return normalizeVoduQuality(fromUrl);
 
   if (/\.m3u8/i.test(url)) return "HLS";
@@ -145,18 +155,22 @@ function parseM3U8Variants(masterUrl, text) {
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i].trim();
     if (line.indexOf("#EXT-X-STREAM-INF") !== 0) continue;
-    var q = null;
-    var res = /RESOLUTION=\d+x(\d+)/i.exec(line);
-    if (res) q = qualityFromHeight(res[1]);
-    if (!q) q = strictQuality(line) || "HLS";
-    q = normalizeVoduQuality(q);
 
     var next = "";
     for (var j = i + 1; j < lines.length; j++) {
       var candidate = lines[j].trim();
       if (candidate && candidate.charAt(0) !== "#") { next = candidate; break; }
     }
-    if (next) variants.push({ url: absoluteUrl(masterUrl, next), quality: q });
+    if (!next) continue;
+
+    var absolute = absoluteUrl(masterUrl, next);
+    var q = null;
+    var res = /RESOLUTION=\d+x(\d+)/i.exec(line);
+    if (res) q = qualityFromHeight(res[1]);
+    if (!q || q === "HLS") q = strictQuality(line) || looseQualityFromUrl(next) || looseQualityFromUrl(absolute) || "HLS";
+    q = normalizeVoduQuality(q);
+
+    variants.push({ url: absolute, quality: q });
   }
   return variants;
 }
