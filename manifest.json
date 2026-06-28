@@ -1,6 +1,6 @@
 {
   "name": "Iraq Scrapers",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Local JS scrapers for VODU, Cinemana, and CinemaBox",
   "author": "qvsalam",
   "scrapers": [
@@ -8,7 +8,7 @@
       "id": "vodu-iraq",
       "name": "VODU",
       "description": "VODU Iraqi streaming - movies and TV shows",
-      "version": "2.5.0",
+      "version": "2.6.0",
       "supportedTypes": ["movie", "tv"],
       "filename": "providers/vodu.js",
       "enabled": true,
