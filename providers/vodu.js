@@ -1,4 +1,4 @@
-// VODU Provider — Iraq Scrapers v4.7.0
+// VODU Provider — Iraq Scrapers v4.8.0
 
 var TMDB_KEY = "ee8ac8a9044c09a11cc362033f98c735";
 var QUALITY_ORDER = { "1080p": 0, "720p": 1, "480p": 2, "360p": 3, "240p": 4, "HLS": 5, "HD": 6 };
@@ -202,6 +202,74 @@ function expandItems(items) {
   });
 }
 
+function hasQuality(items, q) {
+  for (var i = 0; i < items.length; i++) {
+    if (normalizeVoduQuality(items[i].quality) === q) return true;
+  }
+  return false;
+}
+
+function pageMentions720(html) {
+  return /(?:>|\s|["'])(720p|720)(?:<|\s|["'])/i.test(cleanText(html));
+}
+
+function uniquePush(arr, value) {
+  if (value && arr.indexOf(value) === -1) arr.push(value);
+}
+
+function generate720Candidates(url) {
+  var list = [];
+  var u = cleanText(url);
+  var patterns = [
+    [/1080p/ig, "720p"],
+    [/1080/ig, "720"],
+    [/1920x1080/ig, "1280x720"],
+    [/480p/ig, "720p"],
+    [/480/ig, "720"],
+    [/360p/ig, "720p"],
+    [/360/ig, "720"]
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var candidate = u.replace(patterns[i][0], patterns[i][1]);
+    if (candidate !== u) uniquePush(list, candidate);
+  }
+  return list;
+}
+
+function urlExists(url) {
+  return fetch(url, { method: "HEAD" })
+    .then(function(r) { return !!(r && r.ok); })
+    .catch(function() {
+      return fetch(url).then(function(r) { return !!(r && r.ok); }).catch(function() { return false; });
+    });
+}
+
+function try720Candidates(items, candidates, index) {
+  if (index >= candidates.length) return Promise.resolve(items);
+  var c = candidates[index];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].url === c) return try720Candidates(items, candidates, index + 1);
+  }
+  return urlExists(c).then(function(ok) {
+    if (ok) {
+      items.push({ url: c, quality: "720p" });
+      return items;
+    }
+    return try720Candidates(items, candidates, index + 1);
+  });
+}
+
+function ensure720Variant(items, html) {
+  if (hasQuality(items, "720p") || !pageMentions720(html)) return Promise.resolve(items);
+  var candidates = [];
+  for (var i = 0; i < items.length; i++) {
+    var generated = generate720Candidates(items[i].url);
+    for (var j = 0; j < generated.length; j++) uniquePush(candidates, generated[j]);
+  }
+  if (!candidates.length) return Promise.resolve(items);
+  return try720Candidates(items, candidates, 0);
+}
+
 function getStreams(tmdbId, mediaType, season, episode) {
   return fetchTMDBTitles(tmdbId, mediaType)
     .then(function(titles) {
@@ -242,7 +310,9 @@ function tryLinks(links, idx, mediaType, season, episode) {
         selected = selectMovieItems(allUrls);
       }
       return expandItems(selected).then(function(expanded) {
-        var streams = itemsToStreams(expanded);
+        return ensure720Variant(expanded, html);
+      }).then(function(finalItems) {
+        var streams = itemsToStreams(finalItems);
         if (streams.length) return streams;
         return tryLinks(links, idx + 1, mediaType, season, episode);
       });
