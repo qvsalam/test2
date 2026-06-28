@@ -1,12 +1,12 @@
-// VODU Provider — Iraq Scrapers v4.3.0
+// VODU Provider — Iraq Scrapers v4.4.0
 
 var TMDB_KEY = "ee8ac8a9044c09a11cc362033f98c735";
-var QUALITY_ORDER = { "1080p": 0, "720p": 1, "480p": 2, "360p": 3, "HLS": 4, "HD": 5 };
+var QUALITY_ORDER = { "4K": 0, "2160p": 0, "1080p": 1, "720p": 2, "480p": 3, "360p": 4, "240p": 5, "HLS": 6, "HD": 7 };
 
 function sortByQuality(streams) {
   return streams.sort(function(a, b) {
-    var oa = QUALITY_ORDER[a.quality] != null ? QUALITY_ORDER[a.quality] : 9;
-    var ob = QUALITY_ORDER[b.quality] != null ? QUALITY_ORDER[b.quality] : 9;
+    var oa = QUALITY_ORDER[a.quality] != null ? QUALITY_ORDER[a.quality] : 99;
+    var ob = QUALITY_ORDER[b.quality] != null ? QUALITY_ORDER[b.quality] : 99;
     return oa - ob;
   });
 }
@@ -22,42 +22,62 @@ function fetchTMDBTitles(tmdbId, mediaType) {
     var titles = [];
     function add(t) { if (t && titles.indexOf(t) === -1) titles.push(t); }
     add(en.title); add(en.original_title); add(en.name); add(en.original_name);
-    add(ar.title); add(ar.name);
+    add(ar.title); add(ar.original_title); add(ar.name); add(ar.original_name);
     return titles.filter(Boolean);
   });
 }
 
-function getQ(url) {
-  if (/[-_.]1080[pi]?[-_.]|[-_]1080|1080p/i.test(url)) return "1080p";
-  if (/[-_.]720[pi]?[-_.]|[-_]720|720p/i.test(url))   return "720p";
-  if (/[-_.]480[pi]?[-_.]|[-_]480|480p/i.test(url))   return "480p";
-  if (/[-_.]360[pi]?[-_.]|[-_]360|360p/i.test(url))   return "360p";
-  if (/[-_.]240[pi]?[-_.]|[-_]240|240p/i.test(url))   return "240p";
-  if (/\.m3u8/i.test(url)) return "HLS";
+function cleanText(s) {
+  return String(s || "")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&")
+    .replace(/\\u0026/g, "&");
+}
+
+function getQ(text) {
+  text = cleanText(text).toLowerCase();
+  if (/2160p|4k|uhd|(^|[^0-9])2160([^0-9]|$)/i.test(text)) return "4K";
+  if (/1080p|(^|[^0-9])1080([^0-9]|$)/i.test(text)) return "1080p";
+  if (/720p|(^|[^0-9])720([^0-9]|$)/i.test(text)) return "720p";
+  if (/480p|(^|[^0-9])480([^0-9]|$)/i.test(text)) return "480p";
+  if (/360p|(^|[^0-9])360([^0-9]|$)/i.test(text)) return "360p";
+  if (/240p|(^|[^0-9])240([^0-9]|$)/i.test(text)) return "240p";
+  if (/\.m3u8|hls/i.test(text)) return "HLS";
   return "HD";
 }
 
 function isSkip(url) {
   return (/-t\.(mp4|m3u8)/i.test(url) ||
           /_t\.(mp4|m3u8)/i.test(url) ||
-          /thumb|trailer|preview|poster/i.test(url));
+          /thumb|trailer|preview|poster|sprite|thumbnail/i.test(url));
+}
+
+function addVideo(out, seen, url, hint) {
+  url = cleanText(url);
+  if (!url || isSkip(url)) return;
+  var key = url + "|" + getQ(hint || url);
+  if (seen[key]) return;
+  seen[key] = true;
+  out.push({ url: url, quality: getQ((hint || "") + " " + url) });
 }
 
 function getAllVideoUrls(html) {
-  var urls = [], m;
+  html = cleanText(html);
+  var out = [], seen = {}, m, p;
   var patterns = [
-    /["'](https?:\/\/[^"'\s]*:8888\/[^"'\s]+\.(?:mp4|m3u8)[^"'\s]*)/gi,
-    /<(?:source|video)[^>]*src=["'](https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)/gi,
-    /(?:file|src|url|videoUrl|source)\s*[:=]\s*["'](https?:\/\/[^"'\s]+\.(?:mp4|m3u8)[^"'\s]*)/gi,
+    /["'](https?:\/\/[^"'\s]*:8888\/[^"'\s]+\.(?:mp4|m3u8)(?:\?[^"'\s]*)?)/gi,
+    /<(?:source|video)[^>]*src=["'](https?:\/\/[^"']+\.(?:mp4|m3u8)(?:\?[^"']*)?)/gi,
+    /(?:file|src|url|videoUrl|source)\s*[:=]\s*["'](https?:\/\/[^"'\s]+\.(?:mp4|m3u8)(?:\?[^"'\s]*)?)/gi,
     /["'](https?:\/\/[^"'\s]+\.(?:mp4|m3u8)(?:\?[^"'\s]*)?)/gi
   ];
-  for (var p = 0; p < patterns.length; p++) {
+  for (p = 0; p < patterns.length; p++) {
     while ((m = patterns[p].exec(html)) !== null) {
-      var u = m[1].replace(/\\\//g, "/").replace(/&amp;/g, "&");
-      if (urls.indexOf(u) === -1) urls.push(u);
+      var start = Math.max(0, m.index - 260);
+      var end = Math.min(html.length, m.index + m[0].length + 120);
+      addVideo(out, seen, m[1], html.substring(start, end));
     }
   }
-  return urls;
+  return out;
 }
 
 function getStreams(tmdbId, mediaType, season, episode) {
@@ -77,7 +97,7 @@ function searchVODU(titles, idx, mediaType, season, episode) {
       var links = [], m;
       var re = /href=["']([^"']*do=view[^"']*)["']/gi;
       while ((m = re.exec(html)) !== null) {
-        var href = m[1].replace(/&amp;/g, "&");
+        var href = cleanText(m[1]);
         if (href.indexOf("http") !== 0) href = "https://movie.vodu.me/" + href.replace(/^\//, "");
         if (links.indexOf(href) === -1) links.push(href);
       }
@@ -105,19 +125,25 @@ function tryLinks(links, idx, mediaType, season, episode) {
     .catch(function() { return tryLinks(links, idx + 1, mediaType, season, episode); });
 }
 
+function makeStream(url, quality) {
+  quality = quality || getQ(url);
+  return { title: "VODU " + quality, name: "VODU", provider: "VODU", url: url, quality: quality, type: url.indexOf(".m3u8") > -1 ? "hls" : "direct" };
+}
+
 function filterEpisode(allUrls, sNum, eNum) {
   var sStr = sNum < 10 ? "0" + sNum : "" + sNum;
   var eStr = eNum < 10 ? "0" + eNum : "" + eNum;
   var pats = ["S" + sStr + "E" + eStr, "s" + sStr + "e" + eStr, "S" + sNum + "E" + eNum];
   var streams = [], seen = {};
   for (var i = 0; i < allUrls.length; i++) {
-    var url = allUrls[i];
-    if (isSkip(url)) continue;
+    var item = allUrls[i];
+    var url = typeof item === "string" ? item : item.url;
+    var quality = typeof item === "string" ? getQ(url) : item.quality;
     var upper = url.toUpperCase();
     for (var p = 0; p < pats.length; p++) {
-      if (upper.indexOf(pats[p].toUpperCase()) > -1 && !seen[url]) {
-        seen[url] = true;
-        streams.push({ title: "VODU " + getQ(url), name: "VODU", url: url, quality: getQ(url) });
+      if (upper.indexOf(pats[p].toUpperCase()) > -1 && !seen[url + quality]) {
+        seen[url + quality] = true;
+        streams.push(makeStream(url, quality));
         break;
       }
     }
@@ -128,10 +154,12 @@ function filterEpisode(allUrls, sNum, eNum) {
 function filterMovie(allUrls) {
   var streams = [], seen = {};
   for (var i = 0; i < allUrls.length; i++) {
-    var url = allUrls[i];
-    if (isSkip(url) || seen[url]) continue;
-    seen[url] = true;
-    streams.push({ title: "VODU " + getQ(url), name: "VODU", url: url, quality: getQ(url) });
+    var item = allUrls[i];
+    var url = typeof item === "string" ? item : item.url;
+    var quality = typeof item === "string" ? getQ(url) : item.quality;
+    if (!url || seen[url + quality]) continue;
+    seen[url + quality] = true;
+    streams.push(makeStream(url, quality));
   }
   return sortByQuality(streams);
 }
