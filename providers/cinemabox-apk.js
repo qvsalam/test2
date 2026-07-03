@@ -1,4 +1,4 @@
-// CinemaBox APK files endpoint v1.4
+// CinemaBox APK files endpoint v1.5
 var K="ee8ac8a9044c09a11cc362033f98c735",A="https://cinema.albox.co/api/v4/";
 async function j(u){var r=await fetch(u,{headers:{Accept:"application/json, text/plain, */*","User-Agent":"Mozilla/5.0"}});return r&&r.ok?await r.json():null}
 function ar(x){return Array.isArray(x)?x:(x&&(x.results||x.data||x.items||x.posts||x.shows||x.result))||[]}
@@ -19,6 +19,6 @@ function seas(x,o){if(!x||typeof x!=="object")return;if(Array.isArray(x)){for(va
 function eps(x,o,ss){if(!x||typeof x!=="object")return;if(Array.isArray(x)){for(var i=0;i<x.length;i++)eps(x[i],o,ss);return}var e=ep(x);if(e&&id(x)){x.__s=sn(x)||ss;o.push(x)}var ks=Object.keys(x);for(var k=0;k<ks.length;k++)eps(x[ks[k]],o,x.__s||ss)}
 async function seasonPlayer(sid,epn){var d=await j(A+"shows/seasons/player/"+sid).catch(function(){return null}),l=[];eps(d,l,null);for(var i=0;i<l.length;i++)if(ep(l[i])===epn)return files(id(l[i]),epn);return[]}
 async function find(show,s,e){var d=await det(show,0),ss=[];seas(d,ss);for(var i=0;i<ss.length;i++)if(ss[i].n===s){var o=await seasonPlayer(ss[i].id,e);if(o.length)return o;var dd=await det(show,ss[i].id),l=[];eps(dd,l,s);for(var k=0;k<l.length;k++)if(ep(l[k])===e)return files(id(l[k]),e)}return[]}
-async function search(term){var q=encodeURIComponent(term),u=["search?page_size=25&page_number=1&search_term=","search?search_term=","search?page_size=25&page_number=1&term=","search?term=","search?query=","search?q="];for(var i=0;i<u.length;i++){var r=ar(await j(A+u[i]+q).catch(function(){return null}));if(r.length)return r}return[]}
+async function search(term){var q=encodeURIComponent(term),u=["search?page_size=25&page_number=1&search_term=","search?search_term=","search?page_size=25&page_number=1&term=","search?term=","search?query=","search?q="];var all=[];for(var i=0;i<u.length;i++){var r=ar(await j(A+u[i]+q).catch(function(){return null}));for(var k=0;k<r.length;k++)all.push(r[k])}return all}
 async function getStreams(tmdbId,mediaType,season,episode){try{var ts=await tt(tmdbId),s=parseInt(season,10)||1,e=parseInt(episode,10)||1;for(var t=0;t<ts.length;t++){var rs=await search(ts[t]);for(var i=0;i<rs.length;i++)if(id(rs[i])&&ok(rs[i],ts)){var out=await find(id(rs[i]),s,e);if(out.length)return out}}return[]}catch(x){return[]}}
 module.exports={getStreams:getStreams};
