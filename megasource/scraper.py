@@ -1,14 +1,14 @@
-"""MegaSource adapter for the CinemaBox provider from qvsalam/test2.
+"""CinemaBox -> MegaSource adapter.
 
-Protocol:
+This is a Python port of providers/cinemabox-apk.js from qvsalam/test2.
+MegaSource protocol:
     get_streams(media_type, media_id, config=None) -> list[dict]
 
-MegaSource media_id format:
-    movie  -> tt1234567
-    series -> tt1234567:1:2
+Supported CinemaBox path:
+    series: tt1234567:season:episode
 
-This adapter mirrors the CinemaBox JS provider in providers/cinemabox-apk.js.
-Only Python standard-library modules are used.
+The original JS provider currently implements the TV/series CinemaBox
+endpoints. Movie endpoints are intentionally not guessed here.
 """
 
 import http.cookiejar
@@ -19,12 +19,15 @@ import urllib.parse
 import urllib.request
 
 TITLE = "CinemaBox Iraq"
-VERSION = "1.0.0"
-DESCRIPTION = "CinemaBox provider converted from qvsalam/test2"
+VERSION = "1.1.0"
+DESCRIPTION = "CinemaBox series scraper converted from qvsalam/test2"
 
 TMDB_API_KEY = "ee8ac8a9044c09a11cc362033f98c735"
 BASE_URL = "https://cinema.albox.co/api/v4/"
-USER_AGENT = "Mozilla/5.0"
+USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36"
+)
 
 _cookiejar = http.cookiejar.CookieJar()
 _opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_cookiejar))
@@ -39,11 +42,15 @@ def _request(url):
         },
     )
     try:
-        with _opener.open(req, timeout=15) as response:
+        with _opener.open(req, timeout=20) as response:
             if response.status < 200 or response.status >= 300:
                 return None
-            return json.loads(response.read().decode("utf-8", errors="replace"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError):
+            raw = response.read().decode("utf-8", errors="replace")
+            try:
+                return json.loads(raw)
+            except (ValueError, TypeError):
+                return None
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
         return None
 
 
@@ -112,18 +119,27 @@ def _number(item, keys):
 
 
 def _episode_number(item):
-    return _number(item, ("episode_number", "episodeNumber", "description", "title", "episode"))
+    return _number(item, (
+        "episode_number", "episodeNumber", "description", "title", "episode"
+    ))
 
 
 def _season_number(item):
-    return _number(item, ("season_number", "seasonNumber", "season", "number", "title"))
+    return _number(item, (
+        "season_number", "seasonNumber", "season", "number", "title"
+    ))
 
 
 def _tmdb_tv_titles(tmdb_id):
-    url = "https://api.themoviedb.org/3/tv/{}".format(urllib.parse.quote(str(tmdb_id)))
+    url = "https://api.themoviedb.org/3/tv/{}".format(
+        urllib.parse.quote(str(tmdb_id), safe="")
+    )
     titles = []
     for language in ("en", "ar"):
-        query = urllib.parse.urlencode({"api_key": TMDB_API_KEY, "language": language})
+        query = urllib.parse.urlencode({
+            "api_key": TMDB_API_KEY,
+            "language": language,
+        })
         data = _request(url + "?" + query)
         if isinstance(data, dict):
             for key in ("name", "original_name"):
@@ -135,25 +151,23 @@ def _tmdb_tv_titles(tmdb_id):
 
 def _imdb_to_tmdb(imdb_id):
     url = "https://api.themoviedb.org/3/find/{}".format(
-        urllib.parse.quote(imdb_id)
+        urllib.parse.quote(str(imdb_id), safe="")
     )
-    query = urllib.parse.urlencode(
-        {"api_key": TMDB_API_KEY, "external_source": "imdb_id"}
-    )
+    query = urllib.parse.urlencode({
+        "api_key": TMDB_API_KEY,
+        "external_source": "imdb_id",
+    })
     data = _request(url + "?" + query)
     if not isinstance(data, dict):
         return None
-    movies = data.get("movie_results") or []
     tv = data.get("tv_results") or []
-    if movies and isinstance(movies[0], dict):
-        return {"type": "movie", "id": movies[0].get("id")}
-    if tv and isinstance(tv[0], dict):
-        return {"type": "tv", "id": tv[0].get("id")}
+    if tv and isinstance(tv[0], dict) and tv[0].get("id"):
+        return {"type": "tv", "id": tv[0]["id"]}
     return None
 
 
 def _dynamic(show_id, season_id=None):
-    url = BASE_URL + "shows/shows/dynamic/" + urllib.parse.quote(str(show_id))
+    url = BASE_URL + "shows/shows/dynamic/" + urllib.parse.quote(str(show_id), safe="")
     if season_id:
         url += "?" + urllib.parse.urlencode({"season_id": season_id})
     data = _request(url)
@@ -226,6 +240,7 @@ def _subtitles(data):
                 "lang": language,
                 "language": language,
                 "title": "Arabic",
+                "format": "srt",
             })
         if value.get("vtt"):
             result.append({
@@ -233,6 +248,7 @@ def _subtitles(data):
                 "lang": language,
                 "language": language,
                 "title": "Arabic",
+                "format": "vtt",
             })
         if value.get("subtitles"):
             walk(value["subtitles"])
@@ -265,6 +281,7 @@ def _streams_from_data(data):
             return
         if not isinstance(value, dict):
             return
+
         url = value.get("url")
         if isinstance(url, str) and re.match(r"^https?://", url):
             if url not in seen:
@@ -275,13 +292,12 @@ def _streams_from_data(data):
                     "title": "CinemaBox " + quality,
                     "url": url,
                     "behaviorHints": {
-                        "notWebReady": False,
                         "proxyHeaders": {
                             "request": {
                                 "User-Agent": USER_AGENT,
                                 "Referer": BASE_URL,
                             }
-                        },
+                        }
                     },
                 }
                 if subtitles:
@@ -289,12 +305,12 @@ def _streams_from_data(data):
                         {
                             "url": sub["url"],
                             "lang": sub.get("lang", "ar"),
-                            "language": sub.get("language", "ar"),
                             "label": sub.get("title", "Arabic"),
                         }
                         for sub in subtitles
                     ]
                 streams.append(stream)
+
         if value.get("videos"):
             walk(value["videos"])
 
@@ -304,10 +320,11 @@ def _streams_from_data(data):
 
 def _episode_files(episode_id, episode_number):
     data = _request(
-        BASE_URL + "shows/episodes/" + urllib.parse.quote(str(episode_id)) + "/files"
+        BASE_URL + "shows/episodes/" + urllib.parse.quote(str(episode_id), safe="") + "/files"
     )
     if not data:
         return []
+
     target = data
     episodes = data.get("episodes") if isinstance(data, dict) else None
     if isinstance(episodes, list):
@@ -319,7 +336,7 @@ def _episode_files(episode_id, episode_number):
 
 
 def _search(term):
-    encoded = urllib.parse.quote(term)
+    encoded = urllib.parse.quote(str(term), safe="")
     paths = (
         "shows/search?q=",
         "search?q=",
@@ -328,8 +345,15 @@ def _search(term):
         "search?search_term=",
     )
     results = []
+    seen = set()
     for path in paths:
-        results.extend(_arr(_request(BASE_URL + path + encoded)))
+        data = _request(BASE_URL + path + encoded)
+        for result in _arr(data):
+            item_id = _id(result)
+            marker = (item_id, _title(result))
+            if marker not in seen:
+                seen.add(marker)
+                results.append(result)
     return results
 
 
@@ -344,37 +368,43 @@ def _series_streams(tmdb_id, season, episode):
             show_id = _id(result)
             if not show_id or not _matches(result, titles):
                 continue
+
             data = _dynamic(show_id)
             seasons = _find_seasons(data)
             for season_number, season_id in seasons:
                 if season_number != season:
                     continue
+
                 season_data = _dynamic(show_id, season_id)
                 episodes = _find_episodes(season_data)
                 for episode_number, episode_id in episodes:
-                    if episode_number == episode:
-                        streams = _episode_files(episode_id, episode)
-                        if streams:
-                            return streams
+                    if episode_number != episode:
+                        continue
+                    streams = _episode_files(episode_id, episode)
+                    if streams:
+                        return streams
     return []
 
 
 def get_streams(media_type, media_id, config=None):
-    """Return CinemaBox streams for a MegaSource request."""
     try:
+        # The source JS provider in test2 has only the series path.
+        # Do not invent undocumented movie endpoints.
         if media_type != "series":
-            # The existing CinemaBox JS provider in test2 implements the
-            # TV/series path. Keep movie requests empty rather than guessing
-            # an undocumented CinemaBox movie endpoint.
             return []
 
         parts = str(media_id).split(":")
         if len(parts) != 3:
             return []
 
-        imdb_id = parts[0]
+        imdb_id = parts[0].strip()
         season = int(parts[1])
         episode = int(parts[2])
+        if not re.fullmatch(r"tt\d+", imdb_id):
+            return []
+        if season < 0 or episode < 0:
+            return []
+
         tmdb = _imdb_to_tmdb(imdb_id)
         if not tmdb or tmdb.get("type") != "tv" or not tmdb.get("id"):
             return []
