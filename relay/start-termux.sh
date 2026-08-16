@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
 
-PORT="${RELAY_PORT:-8080}"
+PORT="${RELAY_PORT:-8787}"
 TOKEN="${RELAY_TOKEN:-}"
 
 if [ -z "$TOKEN" ]; then
@@ -9,6 +9,7 @@ if [ -z "$TOKEN" ]; then
   exit 1
 fi
 
+cd "$(dirname "$0")"
 export RELAY_PORT="$PORT"
 export RELAY_TOKEN="$TOKEN"
-python "$HOME/megasource-relay/server.py"
+python server.py
