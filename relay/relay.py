@@ -1,98 +1,126 @@
 #!/usr/bin/env python3
-"""Authenticated personal relay for MegaSource on Android/Termux.
-
-The phone performs the upstream request, so CinemaBox sees the phone's ISP/IP.
-Endpoints:
-  /health?key=...
-  /fetch?url=...&key=...   small API responses
-  /proxy?url=...&key=...   streaming responses with Range support
-"""
-import ipaddress
+import http.server
+import json
 import os
-import socket
+import re
+import socketserver
 import urllib.error
 import urllib.parse
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-HOST = "127.0.0.1"
 PORT = int(os.environ.get("RELAY_PORT", "8787"))
-KEY = os.environ.get("RELAY_KEY", "")
-UA = os.environ.get("RELAY_UA", "Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
-MAX_FETCH = 4 * 1024 * 1024
-TIMEOUT = 30
+TOKEN = os.environ.get("RELAY_TOKEN", "")
+ALLOWED_HOSTS = {
+    h.strip().lower()
+    for h in os.environ.get("RELAY_ALLOWED_HOSTS", "cinema.albox.co").split(",")
+    if h.strip()
+}
+ALLOW_ANY_HOST = os.environ.get("RELAY_ALLOW_ANY_HOST", "0") == "1"
+UA = os.environ.get(
+    "RELAY_UA",
+    "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/137.0.0.0 Mobile Safari/537.36",
+)
 
 
-def public_host(host):
-    host = (host or "").strip("[]").lower()
-    if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
+def allowed(url):
+    p = urllib.parse.urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
         return False
-    try:
-        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except OSError:
-        return False
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
-            return False
-    return True
+    return ALLOW_ANY_HOST or p.hostname.lower() in ALLOWED_HOSTS
 
 
-def target_url(raw):
-    p = urllib.parse.urlsplit(raw)
-    if p.scheme != "https" or not p.hostname or not public_host(p.hostname):
-        raise ValueError("target_not_allowed")
-    return p.geturl()
+def auth(handler):
+    if not TOKEN:
+        return True
+    supplied = handler.headers.get("X-Relay-Token") or urllib.parse.parse_qs(
+        urllib.parse.urlparse(handler.path).query
+    ).get("token", [""])[0]
+    return supplied == TOKEN
 
 
-class Handler(BaseHTTPRequestHandler):
+def target(handler):
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(handler.path).query)
+    return q.get("url", [""])[0]
+
+
+def fetch(url, method="GET", headers=None):
+    h = {"User-Agent": UA, "Accept": "application/json, text/plain, */*"}
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, headers=h, method=method)
+    return urllib.request.urlopen(req, timeout=30)
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "MegaSourceRelay/2.0"
 
     def log_message(self, fmt, *args):
-        print("[relay] " + (fmt % args), flush=True)
+        print("%s - %s" % (self.address_string(), fmt % args), flush=True)
 
-    def auth(self, query):
-        return bool(KEY) and query.get("key", [""])[0] == KEY
-
-    def do_HEAD(self):
-        self.proxy(head_only=True)
+    def send_json(self, status, obj):
+        data = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_GET(self):
-        p = urllib.parse.urlsplit(self.path)
-        q = urllib.parse.parse_qs(p.query)
-        if not self.auth(q):
-            self.send_error(401, "unauthorized")
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_json(200, {"ok": True, "relay": "android"})
             return
-        if p.path == "/health":
-            body = b"ok\n"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        if parsed.path == "/ip":
+            try:
+                with fetch("https://api.ipify.org") as r:
+                    ip = r.read().decode().strip()
+                self.send_json(200, {"ip": ip})
+            except Exception as exc:
+                self.send_json(502, {"error": str(exc)})
             return
-        if p.path == "/fetch":
-            self.fetch(q)
+        if not auth(self):
+            self.send_json(401, {"error": "unauthorized"})
             return
-        if p.path == "/proxy":
-            self.proxy(False, q)
+        url = target(self)
+        if not allowed(url):
+            self.send_json(
+                403,
+                {"error": "host_not_allowed", "host": urllib.parse.urlparse(url).hostname},
+            )
             return
-        self.send_error(404)
+        if parsed.path == "/fetch":
+            self.handle_fetch(url)
+        elif parsed.path == "/proxy":
+            self.handle_proxy(url)
+        else:
+            self.send_json(404, {"error": "not_found"})
 
-    def fetch(self, q):
-        try:
-            url = target_url(q.get("url", [""])[0])
-        except Exception as exc:
-            self.send_error(400, str(exc))
+    def do_HEAD(self):
+        if not auth(self):
+            self.send_response(401)
+            self.end_headers()
             return
-        req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json, text/plain, */*"})
+        url = target(self)
+        if not allowed(url):
+            self.send_response(403)
+            self.end_headers()
+            return
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                body = r.read(MAX_FETCH + 1)
-                if len(body) > MAX_FETCH:
-                    self.send_error(413, "response too large")
-                    return
+            with fetch(url, "HEAD") as r:
+                self.send_response(r.status)
+                for key in ("Content-Type", "Content-Length", "Accept-Ranges", "Content-Range"):
+                    if r.headers.get(key):
+                        self.send_header(key, r.headers[key])
+                self.end_headers()
+        except Exception:
+            self.send_response(502)
+            self.end_headers()
+
+    def handle_fetch(self, url):
+        try:
+            with fetch(url) as r:
+                body = r.read()
                 self.send_response(r.status)
                 self.send_header("Content-Type", r.headers.get("Content-Type", "application/json"))
                 self.send_header("Content-Length", str(len(body)))
@@ -100,49 +128,91 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
         except urllib.error.HTTPError as exc:
-            self.send_error(exc.code, "upstream HTTP error")
+            body = exc.read()
+            self.send_response(exc.code)
+            self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         except Exception as exc:
-            self.send_error(502, str(exc)[:200])
+            self.send_json(502, {"error": str(exc)})
 
-    def proxy(self, head_only=False, q=None):
-        if q is None:
-            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+    def relay_url(self, absolute):
+        value = "/proxy?url=" + urllib.parse.quote(absolute, safe="")
+        if TOKEN:
+            value += "&token=" + urllib.parse.quote(TOKEN, safe="")
+        return value
+
+    def rewrite_hls(self, text, base_url):
+        def replace_uri(match):
+            return 'URI="' + self.relay_url(urllib.parse.urljoin(base_url, match.group(1))) + '"'
+
+        text = re.sub(r'URI="([^"]+)"', replace_uri, text)
+        lines = []
+        for line in text.splitlines():
+            value = line.strip()
+            if value and not value.startswith("#"):
+                value = self.relay_url(urllib.parse.urljoin(base_url, value))
+            lines.append(value)
+        return "\n".join(lines) + "\n"
+
+    def handle_proxy(self, url):
         try:
-            url = target_url(q.get("url", [""])[0])
-        except Exception as exc:
-            self.send_error(400, str(exc))
-            return
-        headers = {"User-Agent": UA, "Accept": "*/*"}
-        for name in ("Range", "If-Range", "If-None-Match", "If-Modified-Since"):
-            value = self.headers.get(name)
-            if value:
-                headers[name] = value
-        req = urllib.request.Request(url, headers=headers, method="HEAD" if head_only else "GET")
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            headers = {"User-Agent": UA, "Accept": "*/*"}
+            for key in ("Range", "If-Range", "If-None-Match", "If-Modified-Since"):
+                if self.headers.get(key):
+                    headers[key] = self.headers[key]
+            with fetch(url, "GET", headers) as r:
+                ctype = r.headers.get("Content-Type", "")
+                is_hls = "mpegurl" in ctype.lower() or ".m3u8" in url.lower()
+                if is_hls:
+                    text = r.read().decode("utf-8", errors="replace")
+                    data = self.rewrite_hls(text, url).encode()
+                    self.send_response(r.status)
+                    self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+
                 self.send_response(r.status)
-                for name in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified", "Cache-Control", "Expires"):
-                    value = r.headers.get(name)
-                    if value:
-                        self.send_header(name, value)
+                for key in (
+                    "Content-Type", "Content-Length", "Content-Range",
+                    "Accept-Ranges", "ETag", "Last-Modified",
+                ):
+                    if r.headers.get(key):
+                        self.send_header(key, r.headers[key])
+                self.send_header("Cache-Control", "no-store")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                if not head_only:
-                    while True:
-                        chunk = r.read(256 * 1024)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
+                while True:
+                    chunk = r.read(131072)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
         except urllib.error.HTTPError as exc:
-            self.send_error(exc.code, "upstream HTTP error")
+            self.send_response(exc.code)
+            self.end_headers()
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as exc:
-            self.send_error(502, str(exc)[:200])
+            body = str(exc).encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
 
 
 if __name__ == "__main__":
-    if not KEY:
-        raise SystemExit("Set RELAY_KEY before starting the relay")
-    print("MegaSource relay listening on http://127.0.0.1:%d" % PORT, flush=True)
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    print(f"Relay listening on 0.0.0.0:{PORT}", flush=True)
+    print("Allowed hosts:", ", ".join(sorted(ALLOWED_HOSTS)), flush=True)
+    print("Allow any host:", ALLOW_ANY_HOST, flush=True)
+    Server(("0.0.0.0", PORT), Handler).serve_forever()
