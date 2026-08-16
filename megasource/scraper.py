@@ -1,270 +1,192 @@
-"""CinemaBox -> MegaSource scraper with optional Android/ISP relay.
+"""MegaSource CinemaBox scraper using the Android/ISP relay in relay/config.json."""
+import json, re, urllib.parse, urllib.request
 
-MegaSource IDs:
-  series: tt1234567:1:2
-
-If CinemaBox/TMDB only work from the user's Iraqi ISP, set RELAY_URL and
-RELAY_TOKEN below to the public URL/token of relay/server.py running on the
-phone. The relay fetches the API from the phone's own connection.
-"""
-
-import json
-import os
-import re
-import ssl
-import urllib.error
-import urllib.parse
-import urllib.request
-
-TITLE = "CinemaBox Iraq"
-VERSION = "2.0.0"
-DESCRIPTION = "CinemaBox series scraper with optional phone/ISP relay"
-
-TMDB_API_KEY = "ee8ac8a9044c09a11cc362033f98c735"
-BASE_URL = "https://cinema.albox.co/api/v4/"
-UA = "Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/137.0 Mobile Safari/537.36"
-
-# Leave empty until the phone relay is running. Then put its /fetch URL here.
-# Example: https://xxxx.trycloudflare.com/fetch
-RELAY_URL = ""
-RELAY_TOKEN = ""
+TITLE = "CinemaBox Iraq (Phone Relay)"
+VERSION = "3.0.0"
+DESCRIPTION = "CinemaBox series through the user's Android ISP connection"
+CONFIG_URL = "https://raw.githubusercontent.com/qvsalam/test2/main/relay/config.json"
+TMDB_KEY = "ee8ac8a9044c09a11cc362033f98c735"
+BASE = "https://cinema.albox.co/api/v4/"
 
 
-def _request(url, config=None):
-    relay = RELAY_URL
-    token = RELAY_TOKEN
-    if isinstance(config, dict):
-        relay = str(config.get("relay_url") or relay).strip()
-        token = str(config.get("relay_token") or token).strip()
-
+def _raw(url, timeout=25):
     try:
-        if relay:
-            # The relay only permits approved upstream hosts.
-            target = urllib.parse.quote(url, safe="")
-            request_url = relay.rstrip("/") + "?url=" + target
-            headers = {"X-Relay-Token": token, "Accept": "application/json, text/plain, */*"}
-        else:
-            request_url = url
-            headers = {"Accept": "application/json, text/plain, */*", "User-Agent": UA}
-
-        req = urllib.request.Request(request_url, headers=headers)
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=25, context=ctx) as r:
-            if r.status < 200 or r.status >= 300:
-                return None
-            return json.loads(r.read().decode("utf-8", errors="replace"))
+        req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0","Accept":"application/json, text/plain, */*"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode("utf-8", errors="replace")
     except Exception:
-        return None
+        return ""
 
 
-def _arr(v):
-    if isinstance(v, list):
-        return v
-    if isinstance(v, dict):
-        for k in ("results", "data", "items", "posts", "shows", "result"):
-            if isinstance(v.get(k), list):
-                return v[k]
+def _json(url):
+    x=_raw(url)
+    try: return json.loads(x) if x else None
+    except Exception: return None
+
+
+def _relay():
+    c=_json(CONFIG_URL)
+    if not isinstance(c,dict): return None
+    base=str(c.get("base_url") or "").rstrip("/")
+    token=str(c.get("token") or "")
+    if not base or not token: return None
+    return base+"/r/"+token
+
+
+def _get(relay, url):
+    if not relay: return None
+    return _json(relay+"/fetch?url="+urllib.parse.quote(url,safe=""))
+
+
+def _arr(x):
+    if isinstance(x,list): return x
+    if isinstance(x,dict):
+        for k in ("results","data","items","posts","shows","result"):
+            if isinstance(x.get(k),list): return x[k]
     return []
 
 
 def _id(x):
-    if not isinstance(x, dict):
-        return None
-    for k in ("id", "show_id", "post_id", "nb", "_id", "uuid"):
-        if x.get(k) is not None:
-            return str(x[k])
+    if not isinstance(x,dict): return None
+    for k in ("id","show_id","post_id","nb","_id","uuid"):
+        if x.get(k) is not None: return str(x[k])
     return None
 
 
 def _title(x):
-    if not isinstance(x, dict):
-        return ""
-    for k in ("name", "title", "en_name", "ar_name", "original_name", "post_title", "show_name", "show_title"):
-        if x.get(k):
-            return str(x[k])
+    if not isinstance(x,dict): return ""
+    for k in ("name","title","en_name","ar_name","original_name","post_title","show_name","show_title"):
+        if x.get(k): return str(x[k])
     return ""
 
 
-def _norm(s):
-    s = str(s or "").lower()
-    s = re.sub(r"[’'`]", "", s)
-    return re.sub(r"[^a-z0-9\u0600-\u06ff]+", " ", s).strip()
+def _norm(s): return re.sub(r"[^a-z0-9\u0600-\u06ff]+"," ",str(s or "").lower()).strip()
+
+def _match(x,titles):
+    a=_norm(_title(x))
+    return bool(a) and any(b and (a==b or a in b or b in a) for b in (_norm(t) for t in titles))
 
 
-def _match(x, titles):
-    a = _norm(_title(x))
-    return bool(a and any(b and (a == b or a in b or b in a) for b in (_norm(t) for t in titles)))
-
-
-def _num(x, keys):
-    if not isinstance(x, dict):
-        return None
+def _num(x,keys):
+    if not isinstance(x,dict): return None
     for k in keys:
-        v = x.get(k)
-        m = re.search(r"\d+", str(v)) if v is not None else None
-        if m:
-            return int(m.group())
+        if x.get(k) is not None:
+            m=re.search(r"\d+",str(x[k]))
+            if m:return int(m.group())
     return None
 
-
-def _season(x):
-    return _num(x, ("season_number", "seasonNumber", "season", "number", "title"))
-
-
-def _episode(x):
-    return _num(x, ("episode_number", "episodeNumber", "description", "title", "episode"))
+def _season(x): return _num(x,("season_number","seasonNumber","season","number","title"))
+def _episode(x): return _num(x,("episode_number","episodeNumber","description","title","episode"))
 
 
-def _tmdb_find(imdb_id, config):
-    url = "https://api.themoviedb.org/3/find/" + urllib.parse.quote(imdb_id)
-    q = urllib.parse.urlencode({"api_key": TMDB_API_KEY, "external_source": "imdb_id"})
-    d = _request(url + "?" + q, config)
-    if not isinstance(d, dict):
-        return None
-    tv = d.get("tv_results") or []
-    return tv[0] if tv and isinstance(tv[0], dict) else None
+def _walk(v):
+    if isinstance(v,list):
+        for x in v: yield from _walk(x)
+    elif isinstance(v,dict):
+        yield v
+        for x in v.values(): yield from _walk(x)
 
 
-def _tmdb_titles(tmdb_id, config):
-    url = "https://api.themoviedb.org/3/tv/" + urllib.parse.quote(str(tmdb_id))
-    out = []
-    for lang in ("en", "ar"):
-        q = urllib.parse.urlencode({"api_key": TMDB_API_KEY, "language": lang})
-        d = _request(url + "?" + q, config)
-        if isinstance(d, dict):
-            for k in ("name", "original_name"):
-                v = str(d.get(k) or "").strip()
-                if v and v not in out:
-                    out.append(v)
-    return out
-
-
-def _dynamic(show_id, season_id, config):
-    u = BASE_URL + "shows/shows/dynamic/" + urllib.parse.quote(str(show_id))
-    if season_id:
-        u += "?" + urllib.parse.urlencode({"season_id": season_id})
-    d = _request(u, config)
-    if isinstance(d, dict) and isinstance(d.get("data"), dict):
-        d = d["data"]
-    if isinstance(d, dict) and isinstance(d.get("result"), dict):
-        d = d["result"]
+def _dynamic(relay,show,season_id=None):
+    u=BASE+"shows/shows/dynamic/"+urllib.parse.quote(str(show))
+    if season_id:u+="?season_id="+urllib.parse.quote(str(season_id))
+    d=_get(relay,u)
+    if isinstance(d,dict) and isinstance(d.get("data"),dict):d=d["data"]
+    if isinstance(d,dict) and isinstance(d.get("result"),dict):d=d["result"]
     return d
 
 
-def _walk(value):
-    if isinstance(value, list):
-        for x in value:
-            yield from _walk(x)
-    elif isinstance(value, dict):
-        yield value
-        for x in value.values():
-            yield from _walk(x)
-
-
-def _seasons(data):
-    out = []
-    seen = set()
-    for x in _walk(data):
-        ct = str(x.get("card_type") or x.get("type") or "").lower()
-        n, i = _season(x), _id(x)
-        if n is not None and "season" in ct and i and (n, i) not in seen:
-            seen.add((n, i)); out.append((n, i))
+def _seasons(d):
+    out=[];seen=set()
+    for x in _walk(d):
+        ct=str(x.get("card_type") or x.get("type") or "").lower();n=_season(x);i=_id(x)
+        if n is not None and "season" in ct and i and (n,i) not in seen:seen.add((n,i));out.append((n,i))
     return out
 
 
-def _episodes(data):
-    out = []
-    seen = set()
-    for x in _walk(data):
-        ct = str(x.get("card_type") or x.get("type") or "").lower()
-        n, i = _episode(x), _id(x)
-        if n is not None and "episode" in ct and i and (n, i) not in seen:
-            seen.add((n, i)); out.append((n, i))
+def _episodes(d):
+    out=[];seen=set()
+    for x in _walk(d):
+        ct=str(x.get("card_type") or x.get("type") or "").lower();n=_episode(x);i=_id(x)
+        if n is not None and "episode" in ct and i and (n,i) not in seen:seen.add((n,i));out.append((n,i))
     return out
 
 
-def _subtitles(data):
-    out = []
-    seen = set()
-    for x in _walk(data):
-        for key in ("srt", "vtt"):
-            u = x.get(key)
-            if isinstance(u, str) and u.startswith("http") and u not in seen:
-                seen.add(u)
-                lang = str(x.get("language") or "ar")
-                out.append({"url": u, "lang": lang, "language": lang, "label": "Arabic"})
+def _tv_titles(relay,tmdb_id):
+    out=[]
+    for lang in ("en","ar"):
+        u="https://api.themoviedb.org/3/tv/"+urllib.parse.quote(str(tmdb_id))+"?"+urllib.parse.urlencode({"api_key":TMDB_KEY,"language":lang})
+        d=_get(relay,u)
+        if isinstance(d,dict):
+            for k in ("name","original_name"):
+                v=str(d.get(k) or "").strip()
+                if v and v not in out:out.append(v)
     return out
 
 
-def _streams(data):
-    subs = _subtitles(data)
-    out, seen = [], set()
-    for x in _walk(data):
-        u = x.get("url")
-        if not isinstance(u, str) or not re.match(r"^https?://", u) or u in seen:
-            continue
-        seen.add(u)
-        q = str(x.get("quality") or "")
-        if not q:
-            q = "1080p" if "1080" in u else "720p" if "720" in u else "480p" if "480" in u else "HD"
-        s = {"name": "CinemaBox", "title": "CinemaBox " + q, "url": u}
-        if subs:
-            s["subtitles"] = subs
-        out.append(s)
+def _imdb_tv(relay,imdb):
+    u="https://api.themoviedb.org/3/find/"+urllib.parse.quote(imdb)+"?"+urllib.parse.urlencode({"api_key":TMDB_KEY,"external_source":"imdb_id"})
+    d=_get(relay,u)
+    if isinstance(d,dict) and d.get("tv_results"):
+        return d["tv_results"][0].get("id")
+    return None
+
+
+def _search(relay,title):
+    q=urllib.parse.quote(title);out=[]
+    for p in ("shows/search?q=","search?q=","search?query=","search?term=","search?search_term="):
+        out+=_arr(_get(relay,BASE+p+q))
     return out
 
 
-def _search(title, config):
-    q = urllib.parse.quote(title)
-    paths = ("shows/search?q=", "search?q=", "search?query=", "search?term=", "search?search_term=")
-    out = []
-    for p in paths:
-        out.extend(_arr(_request(BASE_URL + p + q, config)))
-    return out
-
-
-def _episode_files(eid, number, config):
-    d = _request(BASE_URL + "shows/episodes/" + urllib.parse.quote(str(eid)) + "/files", config)
-    if not d:
-        return []
-    if isinstance(d, dict) and isinstance(d.get("episodes"), list):
+def _files(relay,eid,ep):
+    d=_get(relay,BASE+"shows/episodes/"+urllib.parse.quote(str(eid))+"/files")
+    if not d:return []
+    target=d
+    if isinstance(d,dict) and isinstance(d.get("episodes"),list):
         for e in d["episodes"]:
-            if _episode(e) == number:
-                return _streams(e)
-    return _streams(d)
+            if _episode(e)==ep:target=e;break
+    subs=[];seen_sub=set()
+    for x in _walk(target):
+        lang=str(x.get("language") or "ar")
+        for k in ("srt","vtt"):
+            u=x.get(k)
+            if isinstance(u,str) and u.startswith("http") and u not in seen_sub:
+                seen_sub.add(u);subs.append((u,lang))
+    streams=[];seen=set()
+    for x in _walk(target):
+        u=x.get("url")
+        if not isinstance(u,str) or not u.startswith(("http://","https://")) or u in seen:continue
+        seen.add(u)
+        q=str(x.get("quality") or "") or ("1080p" if "1080" in u else "720p" if "720" in u else "480p" if "480" in u else "HD")
+        su=relay+"/stream?url="+urllib.parse.quote(u,safe="")
+        s={"name":"CinemaBox","title":"CinemaBox "+q,"url":su,"quality":q}
+        if subs:s["subtitles"]=[{"url":relay+"/stream?url="+urllib.parse.quote(u2,safe=""),"lang":la,"label":"Arabic"} for u2,la in subs]
+        streams.append(s)
+    return streams
 
 
-def _series(imdb_id, season, episode, config):
-    tmdb = _tmdb_find(imdb_id, config)
-    if not tmdb or not tmdb.get("id"):
-        return []
-    titles = _tmdb_titles(tmdb["id"], config)
-    if not titles:
-        return []
-
-    for title in titles:
-        for result in _search(title, config):
-            show_id = _id(result)
-            if not show_id or not _match(result, titles):
-                continue
-            for sn, sid in _seasons(_dynamic(show_id, None, config)):
-                if sn != season:
-                    continue
-                for en, eid in _episodes(_dynamic(show_id, sid, config)):
-                    if en == episode:
-                        streams = _episode_files(eid, episode, config)
-                        if streams:
-                            return streams
-    return []
-
-
-def get_streams(media_type, media_id, config=None):
-    if media_type != "series":
-        return []
-    parts = str(media_id).split(":")
-    if len(parts) != 3:
-        return []
+def get_streams(media_type,media_id,config=None):
     try:
-        return _series(parts[0], int(parts[1]), int(parts[2]), config)
+        if media_type!="series":return []
+        parts=str(media_id).split(":")
+        if len(parts)!=3:return []
+        season,episode=int(parts[1]),int(parts[2])
+        relay=_relay()
+        if not relay:return []
+        tmdb_id=_imdb_tv(relay,parts[0])
+        if not tmdb_id:return []
+        titles=_tv_titles(relay,tmdb_id)
+        for title in titles:
+            for result in _search(relay,title):
+                sid=_id(result)
+                if not sid or not _match(result,titles):continue
+                for sn,season_id in _seasons(_dynamic(relay,sid)):
+                    if sn!=season:continue
+                    for en,episode_id in _episodes(_dynamic(relay,sid,season_id)):
+                        if en==episode:
+                            found=_files(relay,episode_id,episode)
+                            if found:return found
+        return []
     except Exception:
         return []
