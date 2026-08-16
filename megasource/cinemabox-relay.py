@@ -4,8 +4,6 @@ Set RELAY_BASE_URL to the public URL of the phone's Cloudflare Tunnel and
 RELAY_KEY to the same value used by relay/relay.py.
 
 Series media_id: tt1234567:1:2
-Movie requests intentionally return [] because the existing test2 CinemaBox
-provider exposes the TV/series endpoint only.
 """
 import json
 import re
@@ -13,27 +11,34 @@ import urllib.parse
 import urllib.request
 
 TITLE = "CinemaBox Iraq (Phone Relay)"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DESCRIPTION = "CinemaBox through the user's Iraqi ISP connection"
-
 RELAY_BASE_URL = "https://CHANGE-ME.trycloudflare.com"
 RELAY_KEY = "CHANGE_ME"
 TMDB_API_KEY = "ee8ac8a9044c09a11cc362033f98c735"
 CINEMA_BASE = "https://cinema.albox.co/api/v4/"
 
 
-def _request(url):
-    relay = RELAY_BASE_URL.rstrip("/") + "/proxy?" + urllib.parse.urlencode({"url": url})
-    req = urllib.request.Request(relay, headers={
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 MegaSource",
-        "X-Relay-Key": RELAY_KEY,
-    })
+def _direct(url):
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        req = urllib.request.Request(url, headers={"Accept":"application/json, text/plain, */*", "User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
             return json.loads(r.read().decode("utf-8", errors="replace"))
     except Exception:
         return None
+
+
+def _request(url):
+    # CinemaBox API calls are forced through the phone. TMDB stays direct.
+    if urllib.parse.urlparse(url).hostname == "cinema.albox.co":
+        relay = RELAY_BASE_URL.rstrip("/") + "/proxy?" + urllib.parse.urlencode({"url": url})
+        try:
+            req = urllib.request.Request(relay, headers={"Accept":"application/json, text/plain, */*", "User-Agent":"Mozilla/5.0 MegaSource", "X-Relay-Key":RELAY_KEY})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read().decode("utf-8", errors="replace"))
+        except Exception:
+            return None
+    return _direct(url)
 
 
 def _arr(x):
@@ -102,39 +107,30 @@ def _walk_episodes(x, out):
 
 
 def _tmdb_titles(imdb_id):
-    url = "https://api.themoviedb.org/3/find/{}?".format(urllib.parse.quote(imdb_id)) + urllib.parse.urlencode({"api_key": TMDB_API_KEY, "external_source": "imdb_id"})
-    data = _request(url)
-    # TMDB is not allow-listed by the phone relay, so fetch it directly if the relay rejects it.
-    if not isinstance(data, dict):
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"}), timeout=20) as r:
-                data = json.loads(r.read().decode("utf-8", errors="replace"))
-        except Exception:
-            return [], None
+    url = "https://api.themoviedb.org/3/find/{}?".format(urllib.parse.quote(imdb_id)) + urllib.parse.urlencode({"api_key":TMDB_API_KEY,"external_source":"imdb_id"})
+    data = _direct(url)
+    if not isinstance(data, dict): return [], None
     tv = data.get("tv_results") or []
     if not tv or not isinstance(tv[0], dict): return [], None
     tmdb_id = tv[0].get("id")
     titles = []
     for lang in ("en", "ar"):
-        u = "https://api.themoviedb.org/3/tv/{}?".format(tmdb_id) + urllib.parse.urlencode({"api_key": TMDB_API_KEY, "language": lang})
-        try:
-            with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent":"Mozilla/5.0"}), timeout=20) as r:
-                d = json.loads(r.read().decode("utf-8", errors="replace"))
+        u = "https://api.themoviedb.org/3/tv/{}?".format(tmdb_id) + urllib.parse.urlencode({"api_key":TMDB_API_KEY,"language":lang})
+        d = _direct(u)
+        if isinstance(d, dict):
             for k in ("name", "original_name"):
                 if d.get(k) and d[k] not in titles: titles.append(d[k])
-        except Exception: pass
     return titles, tmdb_id
 
 
 def _dynamic(show_id, season_id=None):
     u = CINEMA_BASE + "shows/shows/dynamic/" + urllib.parse.quote(str(show_id))
-    if season_id: u += "?" + urllib.parse.urlencode({"season_id": season_id})
+    if season_id: u += "?" + urllib.parse.urlencode({"season_id":season_id})
     return _request(u)
 
 
 def _search(term):
-    q = urllib.parse.quote(term)
-    out = []
+    q = urllib.parse.quote(term); out = []
     for path in ("shows/search?q=", "search?q=", "search?query=", "search?term=", "search?search_term="):
         out += _arr(_request(CINEMA_BASE + path + q))
     return out
@@ -147,11 +143,10 @@ def _subtitles(data):
             for y in x: walk(y)
         elif isinstance(x, dict):
             lang = x.get("language") or "ar"
-            for key, fmt in (("srt", "srt"), ("vtt", "vtt")):
-                if x.get(key): out.append({"url": x[key], "lang": lang, "language": lang, "title": "Arabic", "format": fmt})
+            for key, fmt in (("srt","srt"),("vtt","vtt")):
+                if x.get(key): out.append({"url":x[key],"lang":lang,"language":lang,"title":"Arabic","format":fmt})
             if x.get("subtitles"): walk(x["subtitles"])
-    walk(data)
-    return out
+    walk(data); return out
 
 
 def _streams(data):
@@ -162,15 +157,12 @@ def _streams(data):
         elif isinstance(x, dict):
             u = x.get("url")
             if isinstance(u, str) and u.startswith("http") and u not in seen:
-                seen.add(u)
-                q = str(x.get("quality") or ("1080p" if "1080" in u else "720p" if "720" in u else "480p" if "480" in u else "HD"))
-                s = {"name":"CinemaBox", "title":"CinemaBox " + q, "url":u}
-                if subs:
-                    s["subtitles"] = [{"url":z["url"], "lang":z["lang"], "language":z["language"], "label":z["title"]} for z in subs]
+                seen.add(u); q = str(x.get("quality") or ("1080p" if "1080" in u else "720p" if "720" in u else "480p" if "480" in u else "HD"))
+                s = {"name":"CinemaBox","title":"CinemaBox "+q,"url":u}
+                if subs: s["subtitles"] = [{"url":z["url"],"lang":z["lang"],"language":z["language"],"label":z["title"]} for z in subs]
                 out.append(s)
             if x.get("videos"): walk(x["videos"])
-    walk(data)
-    return out
+    walk(data); return out
 
 
 def get_streams(media_type, media_id, config=None):
@@ -185,19 +177,15 @@ def get_streams(media_type, media_id, config=None):
             for result in _search(title):
                 show = _id(result)
                 if not show or not _match(result, titles): continue
-                data = _dynamic(show)
-                seasons = []
-                _walk_seasons(data, seasons)
+                seasons = []; _walk_seasons(_dynamic(show), seasons)
                 for sn, season_id in seasons:
                     if sn != season: continue
-                    eps = []
-                    _walk_episodes(_dynamic(show, season_id), eps)
+                    eps = []; _walk_episodes(_dynamic(show, season_id), eps)
                     for en, episode_id in eps:
                         if en == episode:
                             files = _request(CINEMA_BASE + "shows/episodes/" + urllib.parse.quote(str(episode_id)) + "/files")
-                            if files:
-                                found = _streams(files)
-                                if found: return found
+                            found = _streams(files) if files else []
+                            if found: return found
         return []
     except Exception:
         return []
