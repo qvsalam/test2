@@ -1,48 +1,75 @@
 # CinemaBox Relay (Android / Termux)
 
-This relay lets the MegaSource scraper make CinemaBox API requests through the phone's current Internet connection. It is deliberately restricted to `cinema.albox.co` and requires `RELAY_KEY`.
+This relay lets the MegaSource scraper make CinemaBox API requests through the phone's current Internet connection. That matters when CinemaBox only works from the user's Iraqi ISP/IP.
+
+Architecture:
+
+`MegaSource -> Cloudflare Tunnel -> Termux relay -> cinema.albox.co`
+
+The actual video URL is returned to MegaSource; the phone is used for the source API requests that require the Iraqi IP.
 
 ## 1. Termux
 
-Install Python:
+Install Termux on the Android phone that has the working Iraqi ISP connection.
 
 ```sh
-pkg update
-pkg install python
+pkg update -y
+pkg install python curl -y
 ```
 
-Download `relay.py` from this repository, then set a long private key:
+Download `relay.py` from this repository. Choose a long random relay key and start it:
 
 ```sh
-export RELAY_KEY='CHANGE_THIS_TO_A_LONG_RANDOM_SECRET'
-python relay.py
+export RELAY_KEY='PUT_A_LONG_RANDOM_KEY_HERE'
+python relay/relay.py
 ```
 
-The local service listens on `127.0.0.1:8787`.
+The local relay listens on `127.0.0.1:8787`.
 
-## 2. Cloudflare Tunnel
+Test locally:
 
-Install `cloudflared` for your Android/Termux architecture. Cloudflare documents `cloudflared` downloads and Tunnel setup here:
-https://developers.cloudflare.com/tunnel/downloads/
+```sh
+curl http://127.0.0.1:8787/health
+```
 
-For a quick temporary tunnel:
+## 2. Cloudflare Quick Tunnel
+
+Install `cloudflared` for the phone's CPU architecture using Cloudflare's official downloads.
+
+Then run:
 
 ```sh
 cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
-Cloudflare will print a temporary `https://....trycloudflare.com` URL.
+Cloudflare will print a temporary URL similar to:
 
-Test it from another device:
+`https://random-name.trycloudflare.com`
 
-```sh
-curl -H 'X-Relay-Key: CHANGE_THIS_TO_A_LONG_RANDOM_SECRET' 'https://YOUR-TUNNEL.trycloudflare.com/health'
+Quick Tunnels are free and do not require a domain or Cloudflare account, but the hostname changes when the tunnel is restarted.
+
+## 3. Configure MegaSource
+
+Edit `relay/relay.json` in the GitHub repository:
+
+```json
+{
+  "relay_url": "https://random-name.trycloudflare.com/proxy",
+  "relay_token": "PUT_THE_SAME_RELAY_KEY_HERE"
+}
 ```
 
-You should get `{"ok": true, "service": "cinemabox-relay"}`.
+Then use this MegaSource scraper URL:
 
-## 3. MegaSource
+`https://raw.githubusercontent.com/qvsalam/test2/main/megasource/cinemabox_relay.py`
 
-The MegaSource scraper must use the tunnel URL as its relay endpoint and send the same `X-Relay-Key` header. Do not publish the relay key in a public repository if the repository is public.
+The scraper reads `relay.json` automatically. You do not need to put the tunnel URL inside the Python file.
 
-The relay only permits HTTPS requests to `cinema.albox.co`, preventing it from becoming a general-purpose open proxy.
+## 4. Important
+
+- Keep the phone on the Iraqi ISP/network that is known to work with CinemaBox.
+- Keep both Termux processes running: `relay.py` and `cloudflared`.
+- If the Quick Tunnel URL changes, update only `relay/relay.json` and re-test the scraper.
+- Do not reuse the relay key for other services.
+- The relay only permits `cinema.albox.co`; it is not an arbitrary open proxy.
+- The current CinemaBox adapter supports the Series path (`ttID:season:episode`) because that is the path implemented by the existing CinemaBox provider in `test2`.
