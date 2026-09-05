@@ -187,6 +187,28 @@ test('stream endpoint does not return direct URLs when proxy configuration is in
   assert.deepEqual(response.body, { streams: [] });
 });
 
+test('stream endpoint omits media hosts outside STREAM_HOSTS instead of leaking direct URLs', async () => {
+  const app = createApp({
+    env: {
+      VLESS_URL: 'vless://123e4567-e89b-12d3-a456-426614174000@104.18.26.180:443?type=ws&security=tls&host=vless.example.test&sni=vless.example.test',
+      PROXY_TOKEN: 'proxy-secret',
+      STREAM_HOSTS: 'cdn.allowed.test',
+      PROVIDERS_DIR: repoProviders,
+    },
+    providerDir: repoProviders,
+    baseFetch: async () => new Response('{}', { status: 200 }),
+  });
+  app.registry.getStreams = async () => [
+    { url: 'https://cdn.blocked.test/video.mp4', provider: 'blocked' },
+    { url: 'https://cdn.allowed.test/video.mp4', provider: 'allowed' },
+  ];
+  const response = { writeHead(status) { this.status = status; }, end(body) { this.body = JSON.parse(Buffer.from(body).toString()); } };
+  await app.handler({ method: 'GET', url: '/stream/movie/tmdb:1.json', headers: { host: 'addon.example.test' } }, response);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.streams.length, 1);
+  assert.match(response.body.streams[0].url, /\/proxy\?url=/);
+});
+
 test('stream response keeps redirect headers available for signed rewriting', () => {
   const headers = responseHeaders({ location: '/next.m3u8', 'content-type': 'application/vnd.apple.mpegurl' }, (value) => `signed:${value}`);
   assert.equal(headers.location, 'signed:/next.m3u8');

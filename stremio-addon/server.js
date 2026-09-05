@@ -187,13 +187,16 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
         return json(res, 200, { streams: [] });
       }
       return json(res, 200, {
-        streams: streams.map((stream) => ({
-          ...stream,
-          url: signedProxyUrl(stream.url, req, config),
-          name: stream.name || stream.provider || 'Iraq Scrapers',
-          title: stream.title || stream.quality || 'Stream',
-          behaviorHints: stream.behaviorHints || {},
-        })),
+        streams: streams.map((stream) => {
+          if (config.proxyStreams && !streamHostAllowed(stream.url, config)) return null;
+          return {
+            ...stream,
+            url: signedProxyUrl(stream.url, req, config),
+            name: stream.name || stream.provider || 'Iraq Scrapers',
+            title: stream.title || stream.quality || 'Stream',
+            behaviorHints: stream.behaviorHints || {},
+          };
+        }).filter(Boolean),
       });
     } catch (_) {
       // Stremio expects protocol-shaped responses. Keep implementation details

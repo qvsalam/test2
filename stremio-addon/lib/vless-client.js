@@ -27,11 +27,14 @@ function parseVlessUrl(value) {
   const servername = url.searchParams.get('sni') || hostHeader;
   const wsPath = url.searchParams.get('path') || '/';
 
-  if (!/^[0-9a-fA-F-]{36}$/.test(uuid)) throw new Error('Invalid VLESS UUID');
+  if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(uuid)) throw new Error('Invalid VLESS UUID');
   if (!address) throw new Error('VLESS server address is missing');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid VLESS port');
   if (type !== 'ws') throw new Error(`Only VLESS type=ws is supported (got ${type})`);
   if (security !== 'tls') throw new Error(`Only VLESS security=tls is supported (got ${security})`);
+  if ([hostHeader, servername, wsPath].some((part) => /[\r\n]/.test(String(part)))) {
+    throw new Error('VLESS host, SNI, and path must not contain CR/LF');
+  }
 
   return {
     uuid,
@@ -153,6 +156,7 @@ function websocketDuplex(ws) {
       if (!responseHeaderDone) {
         pending = Buffer.concat([pending, bytes]);
         if (pending.length < 2) return;
+        if (pending[0] !== 0x00) throw new Error('Invalid VLESS response version');
         const addonLength = pending[1];
         const offset = 2 + addonLength;
         if (pending.length < offset) return;
@@ -227,7 +231,7 @@ function dechunk(buffer) {
     if (eol < 0) throw new Error('Incomplete chunked response');
     const sizeText = buffer.subarray(offset, eol).toString('ascii').split(';', 1)[0].trim();
     const size = parseInt(sizeText, 16);
-    if (!Number.isFinite(size)) throw new Error('Invalid chunk size');
+    if (!Number.isFinite(size) || size < 0) throw new Error('Invalid chunk size');
     offset = eol + 2;
     if (size === 0) return Buffer.concat(parts);
     if (offset + size + 2 > buffer.length) throw new Error('Incomplete chunk body');
@@ -389,7 +393,7 @@ function parseChunkedBody(buffer, state, final = false) {
       const eol = buffer.indexOf(Buffer.from('\r\n'), offset);
       if (eol < 0) break;
       const size = parseInt(buffer.subarray(offset, eol).toString('ascii').split(';', 1)[0].trim(), 16);
-      if (!Number.isFinite(size)) throw new Error('Invalid chunk size');
+      if (!Number.isFinite(size) || size < 0) throw new Error('Invalid chunk size');
       state.remaining = size;
       offset = eol + 2;
       if (size === 0) {
