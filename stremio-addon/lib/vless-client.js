@@ -276,6 +276,8 @@ function buildRawRequest(target, method, headers = {}, body = Buffer.alloc(0)) {
   const forward = [
     'authorization', 'cookie', 'content-type', 'range', 'if-none-match', 'if-modified-since',
     'if-range', 'origin', 'referer', 'x-api-key',
+    'device-id', 'device-model', 'device-os-version', 'device-store', 'app-version',
+    'x-hide-sensitive-content', 'x-local-before', 'x-isp-id', 'x-ip', 'x-city',
   ];
   for (const key of forward) if (normalized[key]) lines.push(`${key}: ${normalized[key]}`);
   if (body && body.length) lines.push(`Content-Length: ${body.length}`);
@@ -289,7 +291,7 @@ async function connectTarget(value, targetUrl, options = {}) {
   const target = new URL(targetUrl);
   if (!['http:', 'https:'].includes(target.protocol)) throw new Error('Only http:// and https:// targets are supported');
   const targetPort = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
-  const tunnel = await openVlessTunnel(value, target.hostname, targetPort, options);
+  const tunnel = await openVlessTunnel(value, options.targetAddress || target.hostname, targetPort, options);
   let socket = tunnel.bridge;
   try {
     if (target.protocol === 'https:') {

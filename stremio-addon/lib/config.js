@@ -52,12 +52,17 @@ function normalizeRelayUrl(value) {
 }
 
 function readConfig(env = process.env) {
+  const targetAddresses = JSON.parse(env.VLESS_TARGET_ADDRESSES || '{}');
+  for (const [host, address] of Object.entries(targetAddresses)) {
+    if (!/^[a-z0-9.-]+$/.test(host) || !require('node:net').isIP(address)) throw new Error('Invalid VLESS_TARGET_ADDRESSES');
+  }
   const relayUrl = normalizeRelayUrl(env.RELAY_URL || env.RELAY_BASE_URL || '');
   const providerHosts = new Set(csv(env.PROVIDER_HOSTS, DEFAULT_PROVIDER_HOSTS));
   return {
     port: asPositiveInt(env.PORT, 7000, 1),
     publicBaseUrl: String(env.PUBLIC_BASE_URL || '').replace(/\/$/, ''),
     vlessUrl: String(env.VLESS_URL || ''),
+    targetAddresses,
     relayUrl,
     relayToken: String(env.RELAY_TOKEN || env.PROXY_TOKEN || ''),
     proxyToken: String(env.PROXY_TOKEN || env.RELAY_TOKEN || ''),

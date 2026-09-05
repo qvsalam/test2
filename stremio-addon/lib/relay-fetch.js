@@ -41,6 +41,7 @@ function createProviderFetch({ config, baseFetch = globalThis.fetch }) {
     if (typeof body === 'string') body = Buffer.from(body);
     if (!(body instanceof Uint8Array) && !Buffer.isBuffer(body)) body = Buffer.from(String(body));
     const upstream = await requestViaVless(config.vlessUrl, target.toString(), {
+      targetAddress: config.targetAddresses?.[target.hostname],
       method,
       headers: objectHeaders(options.headers),
       body: Buffer.from(body),

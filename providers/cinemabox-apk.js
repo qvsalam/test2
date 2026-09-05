@@ -1,6 +1,6 @@
 // CinemaBox provider v1.7 subtitles
 var K="ee8ac8a9044c09a11cc362033f98c735",A="https://cinema.albox.co/api/v4/";
-async function J(u){var r=await fetch(u,{headers:{Accept:"application/json, text/plain, */*","User-Agent":"Mozilla/5.0"}});return r&&r.ok?await r.json():null}
+async function J(u){var r=await fetch(u,{headers:{Accept:"application/json, text/plain, */*","User-Agent":"Dalvik/2.1.0 (Linux; U; Android 13)","App-Version":"4.6.12","Device-OS-Version":"13","Device-Model":"Android","Device-Store":"apk"}});return r&&r.ok?await r.json():null}
 function N(s){return String(s||"").toLowerCase().replace(/[’'`]/g,"").replace(/[^a-z0-9\u0600-\u06ff]+/g," ").trim()}
 function ARR(x){return Array.isArray(x)?x:(x&&(x.results||x.data||x.items||x.posts||x.shows||x.result))||[]}
 function ID(x){return x&&(x.id||x.show_id||x.post_id||x.nb||x._id||x.uuid)}
@@ -15,8 +15,8 @@ async function TM(id,mediaType){var u="https://api.themoviedb.org/3/"+(mediaType
 async function D(show,season){var d=await J(A+"shows/shows/dynamic/"+show+(season?"?season_id="+season:"")).catch(function(){return null});if(d&&d.data&&!Array.isArray(d.data))d=d.data;if(d&&d.result&&!Array.isArray(d.result))d=d.result;return d}
 function seasons(x,o){if(!x||typeof x!=="object")return;if(Array.isArray(x)){for(var i=0;i<x.length;i++)seasons(x[i],o);return}var ct=String(x.card_type||x.type||"").toLowerCase(),s=SN(x);if(s&&ct.indexOf("season")>=0&&ID(x))o.push({s:s,id:ID(x)});var ks=Object.keys(x);for(var k=0;k<ks.length;k++)seasons(x[ks[k]],o)}
 function eps(x,o){if(!x||typeof x!=="object")return;if(Array.isArray(x)){for(var i=0;i<x.length;i++)eps(x[i],o);return}var ct=String(x.card_type||x.type||"").toLowerCase(),e=EP(x);if(e&&ct.indexOf("episode")>=0&&ID(x))o.push({e:e,id:ID(x)});var ks=Object.keys(x);for(var k=0;k<ks.length;k++)eps(x[ks[k]],o)}
-async function F(eid,e){var d=await J(A+"shows/episodes/"+eid+"/files").catch(function(){return null});if(!d)return[];var t=d;if(Array.isArray(d.episodes)){for(var i=0;i<d.episodes.length;i++)if(EP(d.episodes[i])===e)t=d.episodes[i]}return V(t)}
+async function F(eid,e){var d=await J(A+"shows/episodes/player/"+eid).catch(function(){return null});if(!d)return[];var t=d;if(Array.isArray(d.episodes)){for(var i=0;i<d.episodes.length;i++)if(EP(d.episodes[i])===e)t=d.episodes[i]}return V(t)}
 async function find(show,s,e){var d=await D(show,0),ss=[];seasons(d,ss);for(var i=0;i<ss.length;i++)if(ss[i].s===s){var dd=await D(show,ss[i].id),es=[];eps(dd,es);for(var k=0;k<es.length;k++)if(es[k].e===e)return F(es[k].id,e)}return[]}
-async function S(term){var q=encodeURIComponent(term),u=["shows/search?q=","search?q=","search?query=","search?term=","search?search_term="];var all=[];for(var i=0;i<u.length;i++){var r=ARR(await J(A+u[i]+q).catch(function(){return null}));for(var k=0;k<r.length;k++)all.push(r[k])}return all}
-async function getStreams(tmdbId,mediaType,season,episode){try{var ts=await TM(tmdbId,mediaType),s=parseInt(season,10)||1,e=parseInt(episode,10)||1;for(var t=0;t<ts.length;t++){var rs=await S(ts[t]);for(var i=0;i<rs.length;i++)if(ID(rs[i])&&OK(rs[i],ts)){var o=await find(ID(rs[i]),s,e);if(o.length)return o}}return[]}catch(err){return[]}}
+async function S(term){return ARR(await J(A+"search?term="+encodeURIComponent(term)));}
+async function getStreams(tmdbId,mediaType,season,episode){try{var ts=await TM(tmdbId,mediaType),s=parseInt(season,10)||1,e=parseInt(episode,10)||1;for(var t=0;t<ts.length;t++){var rs=await S(ts[t]);for(var i=0;i<rs.length;i++)if(ID(rs[i])&&OK(rs[i],ts)){if(String(rs[i].type||"").toLowerCase() !== (mediaType==="movie"?"movie":"series"))continue; var o; if(mediaType==="movie"){var d=await D(ID(rs[i]),0);var eid=d&&d.post_info&&d.post_info.episode_id;o=eid?await F(eid,0):[];}else{o=await find(ID(rs[i]),s,e);}if(o.length)return o}}return[]}catch(err){return[]}}
 module.exports={getStreams:getStreams};

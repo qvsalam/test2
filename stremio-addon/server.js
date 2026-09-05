@@ -15,7 +15,7 @@ const DEFAULT_PROVIDER_DIR = path.resolve(__dirname, '..', 'providers');
 function manifest() {
   return {
     id: 'com.qvsalam.iraq-scrapers.stremio',
-    version: '0.2.0',
+    version: '0.2.1',
     name: 'Iraq Scrapers',
     description: 'Arabic movie and series streams from the configured provider relay.',
     resources: ['catalog', 'meta', 'stream', 'subtitles'],
@@ -287,7 +287,8 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
     }
 
     try {
-      await streamer(config.vlessUrl, target.toString(), {
+        await streamer(config.vlessUrl, target.toString(), {
+          targetAddress: config.targetAddresses?.[target.hostname],
         method: req.method,
         headers: incomingStreamHeaders(req),
         timeoutMs: Math.max(config.relayTimeoutMs, 30000),

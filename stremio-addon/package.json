@@ -1,6 +1,6 @@
 {
   "name": "iraq-stremio-addon",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Stremio protocol adapter for the existing Iraq provider modules",
   "main": "server.js",
