@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: iraq-vless-relay
+    runtime: node
+    rootDir: vless-relay
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VLESS_URL
+        sync: false
+      - key: RELAY_TOKEN
+        generateValue: true
