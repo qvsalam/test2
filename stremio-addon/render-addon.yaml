@@ -19,3 +19,5 @@ services:
         value: providers
       - key: PROXY_STREAMS
         value: "true"
+      - key: STREAM_HOSTS
+        value: "movie.vodu.me,cinema.albox.co,cinemana.shabakaty.cc,cinemana.shabakaty.com"
