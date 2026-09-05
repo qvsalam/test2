@@ -131,7 +131,7 @@ function websocketDuplex(ws) {
   let closed = false;
 
   const stream = new Duplex({
-    read() {},
+    read() { if (!closed) ws.resume(); },
     write(chunk, _encoding, callback) {
       if (closed || ws.readyState !== OPEN) {
         callback(new Error('VLESS WebSocket is closed'));
@@ -164,7 +164,7 @@ function websocketDuplex(ws) {
         pending = Buffer.alloc(0);
         responseHeaderDone = true;
       }
-      if (bytes.length) stream.push(bytes);
+      if (bytes.length && !stream.push(bytes)) ws.pause();
     } catch (error) {
       stream.destroy(error);
     }
@@ -243,11 +243,13 @@ function dechunk(buffer) {
   throw new Error('Incomplete chunked response');
 }
 
-function decodeHttpResponse(raw) {
+function decodeHttpResponse(raw, method = 'GET') {
   const parsed = parseHeaderBlock(raw);
   if (!parsed) throw new Error('Incomplete HTTP response headers');
   let body = raw.subarray(parsed.bodyStart);
+  if (method === 'HEAD' || [204, 304].includes(parsed.status)) return { ...parsed, body: Buffer.alloc(0) };
   const contentLength = Number(parsed.headers['content-length']);
+  if (!parsed.headers['transfer-encoding'] && Number.isFinite(contentLength) && body.length < contentLength) throw new Error('Incomplete HTTP response body');
   if (Number.isFinite(contentLength) && contentLength >= 0 && body.length > contentLength) {
     body = body.subarray(0, contentLength);
   }
@@ -258,6 +260,7 @@ function decodeHttpResponse(raw) {
 function buildRawRequest(target, method, headers = {}, body = Buffer.alloc(0)) {
   const normalized = {};
   for (const [key, value] of Object.entries(headers || {})) {
+    if (/[\r\n]/.test(String(key) + String(value))) throw new Error('Invalid request header');
     if (value != null) normalized[String(key).toLowerCase()] = String(value);
   }
   const path = `${target.pathname || '/'}${target.search || ''}`;
@@ -360,7 +363,7 @@ async function requestViaVless(value, targetUrl, options = {}) {
       });
       socket.once('error', (error) => finish(reject, error));
     });
-    return decodeHttpResponse(raw);
+    return decodeHttpResponse(raw, method);
   } finally {
     try { socket.destroy(); } catch (_) {}
     try { bridge.destroy(); } catch (_) {}
@@ -439,8 +442,8 @@ async function streamViaVless(value, targetUrl, options = {}, response) {
     if (settled) return;
     settled = true;
     try {
-      if (error && !response.headersSent) response.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
-      if (error && !response.writableEnded) response.end(JSON.stringify({ ok: false, error: errorText(error) }));
+      if (error && response.headersSent) response.destroy(error);
+      else if (error && !response.writableEnded) { response.writeHead(502, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ ok: false, error: errorText(error) })); }
       else if (!response.writableEnded) response.end();
     } catch (_) {}
     try { socket.destroy(); } catch (_) {}
@@ -471,10 +474,16 @@ async function streamViaVless(value, targetUrl, options = {}, response) {
       return;
     }
     sendHeaders();
-    response.write(chunk);
+    if (!response.write(chunk)) {
+      socket.pause();
+      if (timer) clearTimeout(timer);
+      response.once('drain', () => { if (!settled) { resetTimer(); socket.resume(); } });
+    }
   };
 
   const processBody = (chunk, final = false) => {
+    if (!parsed) throw new Error('Incomplete HTTP response headers');
+    if (final && contentRemaining > 0) throw new Error('Incomplete HTTP response body');
     let data = Buffer.concat([bodyRemainder, chunk || Buffer.alloc(0)]);
     bodyRemainder = Buffer.alloc(0);
     if ((parsed.headers['transfer-encoding'] || '').toLowerCase().includes('chunked')) {
@@ -496,8 +505,10 @@ async function streamViaVless(value, targetUrl, options = {}, response) {
   socket.write(buildRawRequest(target, String(options.method || 'GET').toUpperCase(), options.headers || {}, options.body || Buffer.alloc(0)));
   let timer;
   let doneHandler;
+  const resetTimer = () => { clearTimeout(timer); timer = setTimeout(() => doneHandler(new Error('Upstream response timeout')), timeoutMs); };
   return new Promise((resolve, reject) => {
     const done = (error) => {
+      if (settled) return;
       if (timer) clearTimeout(timer);
       timer = null;
       if (error) { finish(error); reject(error); return; }
@@ -528,13 +539,14 @@ async function streamViaVless(value, targetUrl, options = {}, response) {
 
     socket.on('data', (chunk) => {
       if (settled) return;
+      resetTimer();
       try {
         let data = Buffer.from(chunk);
         if (!parsed) {
           headerBuffer = Buffer.concat([headerBuffer, data]);
           parsed = parseHeaderBlock(headerBuffer);
+          if ((!parsed && headerBuffer.length > 128 * 1024) || (parsed && parsed.bodyStart > 128 * 1024)) throw new Error('Upstream headers too large');
           if (!parsed) return;
-          if (timer) { clearTimeout(timer); timer = null; }
           data = headerBuffer.subarray(parsed.bodyStart);
           headerBuffer = Buffer.alloc(0);
           isPlaylist = requestedPlaylist || /mpegurl|vnd\.apple\.mpegurl/i.test(parsed.headers['content-type'] || '');

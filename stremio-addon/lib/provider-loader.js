@@ -8,6 +8,7 @@ const PROVIDER_FILES = {
   vodu: 'vodu-titlefix.js',
   cinemabox: 'cinemabox-apk.js',
   cinemana: 'cinemana.js',
+  shashety: 'shashety.js',
 };
 
 function loadProvider(filename, fetchImpl) {

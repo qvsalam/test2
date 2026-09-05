@@ -2,6 +2,7 @@
 
 const API_ROOT = 'https://api.themoviedb.org/3';
 const IMAGE_ROOT = 'https://image.tmdb.org/t/p/w500';
+const { parseMediaId } = require('./ids');
 
 function image(pathname) {
   return pathname ? `${IMAGE_ROOT}${pathname}` : undefined;
@@ -13,17 +14,15 @@ function yearOf(item) {
 }
 
 function tmdbId(raw) {
-  const match = String(raw || '').match(/(?:tmdb:)?(\d+)/i);
-  return match ? match[1] : '';
+  return parseMediaId(raw, 'series')?.tmdbId || '';
 }
 
 function imdbId(raw) {
-  const match = String(raw || '').match(/tt\d{5,12}/i);
-  return match ? match[0].toLowerCase() : '';
+  return parseMediaId(raw, 'series')?.imdbId || '';
 }
 
 class TmdbClient {
-  constructor({ apiKey, fetchImpl = globalThis.fetch, maxMetaSeasons = 3, maxMetaEpisodes = 200 }) {
+  constructor({ apiKey, fetchImpl = globalThis.fetch, maxMetaSeasons = 100, maxMetaEpisodes = 5000 }) {
     this.apiKey = apiKey;
     this.fetch = fetchImpl;
     this.maxMetaSeasons = maxMetaSeasons;
@@ -37,7 +36,7 @@ class TmdbClient {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
     }
-    const response = await this.fetch(url);
+    const response = await this.fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`TMDB HTTP ${response.status}`);
     return response.json();
   }
@@ -70,7 +69,8 @@ class TmdbClient {
       background: image(item.backdrop_path),
       description: item.overview || undefined,
       year: yearOf(item),
-      imdbRating: item.vote_average || undefined,
+      imdbRating: item.vote_average ? String(item.vote_average) : undefined,
+      releaseInfo: yearOf(item) ? String(yearOf(item)) : undefined,
     }));
   }
 
@@ -83,8 +83,9 @@ class TmdbClient {
     });
     if (!item) return null;
 
+    const mediaId = imdbId(id) || `tmdb:${numericId}`;
     const meta = {
-      id: `tmdb:${numericId}`,
+      id: mediaId,
       type,
       name: item.title || item.name || item.original_title || item.original_name || `TMDB ${numericId}`,
       poster: image(item.poster_path),
@@ -92,39 +93,43 @@ class TmdbClient {
       logo: undefined,
       description: item.overview || undefined,
       year: yearOf(item),
-      imdbRating: item.vote_average || undefined,
+      imdbRating: item.vote_average ? String(item.vote_average) : undefined,
+      releaseInfo: yearOf(item) ? String(yearOf(item)) : undefined,
       genres: Array.isArray(item.genres) ? item.genres.map((genre) => genre.name).filter(Boolean) : [],
-      runtime: item.runtime || undefined,
+      runtime: item.runtime ? `${item.runtime} min` : undefined,
       imdb_id: item.external_ids?.imdb_id || undefined,
       videos: [],
     };
 
     if (type !== 'series' || !Array.isArray(item.seasons)) return meta;
     const seasons = item.seasons
-      .filter((season) => Number(season.season_number) > 0)
+      .filter((season) => Number.isInteger(Number(season.season_number)) && Number(season.season_number) >= 0)
+      .sort((a, b) => Number(a.season_number) - Number(b.season_number))
       .slice(0, this.maxMetaSeasons);
     let count = 0;
-    for (const season of seasons) {
-      let seasonData;
-      try {
-        seasonData = await this.request(`/tv/${numericId}/season/${season.season_number}`, { language: 'ar' });
-      } catch (_) {
-        continue;
+    // Bound concurrency while retaining later seasons in the Stremio episode list.
+    for (let offset = 0; offset < seasons.length && count < this.maxMetaEpisodes; offset += 5) {
+      const batch = seasons.slice(offset, offset + 5);
+      const results = await Promise.all(batch.map(async (season) => {
+        try { return await this.request(`/tv/${numericId}/season/${season.season_number}`, { language: 'ar' }); }
+        catch (_) { return null; }
+      }));
+      for (let index = 0; index < results.length && count < this.maxMetaEpisodes; index += 1) {
+        const season = batch[index];
+        for (const episode of results[index]?.episodes || []) {
+          if (count >= this.maxMetaEpisodes) break;
+          meta.videos.push({
+            id: `${mediaId}:${season.season_number}:${episode.episode_number}`,
+            season: season.season_number,
+            episode: episode.episode_number,
+            title: episode.name || `Episode ${episode.episode_number}`,
+            released: episode.air_date ? `${episode.air_date}T00:00:00.000Z` : undefined,
+            overview: episode.overview || undefined,
+            thumbnail: image(episode.still_path) || meta.background,
+          });
+          count += 1;
+        }
       }
-      for (const episode of seasonData?.episodes || []) {
-        if (count >= this.maxMetaEpisodes) break;
-        meta.videos.push({
-          id: `tmdb:${numericId}:${season.season_number}:${episode.episode_number}`,
-          season: season.season_number,
-          episode: episode.episode_number,
-          title: episode.name || `Episode ${episode.episode_number}`,
-          released: episode.air_date ? `${episode.air_date}T00:00:00.000Z` : undefined,
-          overview: episode.overview || undefined,
-          thumbnail: image(episode.still_path) || meta.background,
-        });
-        count += 1;
-      }
-      if (count >= this.maxMetaEpisodes) break;
     }
     return meta;
   }

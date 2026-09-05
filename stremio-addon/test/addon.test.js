@@ -11,10 +11,11 @@ const { parseMediaId } = require('../lib/ids');
 const { createProviderFetch } = require('../lib/relay-fetch');
 const { createProviderRegistry } = require('../lib/provider-loader');
 const { createApp, manifest, routeParts } = require('../server');
+const { TmdbClient } = require('../lib/tmdb');
 const { buildVlessHeader, maskedVlessConfig, parseVlessUrl, responseHeaders } = require('../lib/vless-client');
 
 const repoProviders = path.resolve(process.env.PROVIDERS_DIR || path.join(__dirname, '..', '..', 'providers'));
-const providerFiles = ['vodu-titlefix.js', 'cinemabox-apk.js', 'cinemana.js'];
+const providerFiles = ['vodu-titlefix.js', 'cinemabox-apk.js', 'cinemana.js', 'shashety.js'];
 const sourceProvidersPresent = providerFiles.every((filename) => fs.existsSync(path.join(repoProviders, filename)));
 
 test('normalizes relay host to the exact /relay endpoint without secrets', () => {
@@ -45,7 +46,7 @@ test('parses Stremio movie and episode ids', () => {
 
 test('manifest exposes Stremio resources and no relay configuration', () => {
   const value = manifest();
-  assert.deepEqual(value.resources, ['catalog', 'meta', 'stream']);
+  assert.deepEqual(value.resources, ['catalog', 'meta', 'stream', 'subtitles']);
   assert.deepEqual(value.types, ['movie', 'series']);
   assert.deepEqual(value.idPrefixes, ['tmdb', 'tt']);
   assert.equal(JSON.stringify(value).includes('RELAY_TOKEN'), false);
@@ -83,7 +84,7 @@ test('existing provider files load without modifying source files', { skip: !sou
     providerDir: repoProviders,
     fetchImpl: async () => new Response('[]', { status: 200 }),
   });
-  assert.deepEqual(registry.health().loaded.sort(), ['cinemabox', 'cinemana', 'vodu']);
+  assert.deepEqual(registry.health().loaded.sort(), ['cinemabox', 'cinemana', 'shashety', 'vodu']);
 });
 
 test('health status is deliberately redacted', () => {
@@ -114,7 +115,7 @@ test('registry loads the checked-in providers', () => {
     providerDir: repoProviders,
     fetchImpl: async () => new Response('[]', { status: 200 }),
   });
-  assert.deepEqual(registry.health().loaded.sort(), ['cinemabox', 'cinemana', 'vodu']);
+  assert.deepEqual(registry.health().loaded.sort(), ['cinemabox', 'cinemana', 'shashety', 'vodu']);
 });
 
 test('proxy requires a signature and hands the target to the VLESS streamer', async () => {
@@ -213,4 +214,120 @@ test('stream response keeps redirect headers available for signed rewriting', ()
   const headers = responseHeaders({ location: '/next.m3u8', 'content-type': 'application/vnd.apple.mpegurl' }, (value) => `signed:${value}`);
   assert.equal(headers.location, 'signed:/next.m3u8');
   assert.match(headers['access-control-expose-headers'], /location/);
+});
+
+function jsonResponse() {
+  return {
+    writeHead(status, headers) { this.status = status; this.headers = headers; },
+    end(body) { this.body = JSON.parse(Buffer.from(body).toString()); },
+  };
+}
+
+test('catalog accepts Stremio path extras without corrupting escaped separators', async () => {
+  const calls = [];
+  const app = createApp({
+    env: { TMDB_API_KEY: 'test-key' },
+    providerDir: repoProviders,
+    baseFetch: async (input) => { calls.push(new URL(input)); return new Response('{"results":[]}'); },
+  });
+  const response = jsonResponse();
+  await app.handler({ method: 'GET', url: '/catalog/movie/iraq-movies/search=Tom%20%26%20Jerry%2F%D8%AA%D9%88%D9%85&skip=40.json', headers: { host: 'addon.test' } }, response);
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, { metas: [] });
+  assert.equal(calls[0].pathname, '/3/search/movie');
+  assert.equal(calls[0].searchParams.get('query'), 'Tom & Jerry/توم');
+  assert.equal(calls[0].searchParams.get('page'), '3');
+  assert.equal(routeParts('/catalog/movie/iraq-movies/search=%E0%A4%A.json'), null);
+});
+
+test('invalid URL and media ids return controlled empty/error responses', async () => {
+  assert.equal(parseMediaId('%E0%A4%A', 'movie'), null);
+  assert.equal(parseMediaId('tmdb:1399:2', 'series'), null);
+  assert.equal(parseMediaId('prefix:tt1234567:1:4', 'series'), null);
+  const app = createApp({ env: {}, providerDir: repoProviders });
+  const response = jsonResponse();
+  await app.handler({ method: 'GET', url: 'http://[invalid', headers: {} }, response);
+  assert.equal(response.status, 400);
+});
+
+test('IMDb ids resolve through TMDB external find instead of being mistaken for numeric ids', async () => {
+  const calls = [];
+  const client = new TmdbClient({ apiKey: 'test-key', fetchImpl: async (input) => {
+    calls.push(new URL(input));
+    return new Response('{"movie_results":[{"id":27205}],"tv_results":[{"id":1399}]}');
+  } });
+  assert.equal(await client.resolveId('movie', 'tt1375666'), '27205');
+  assert.equal(calls[0].pathname, '/3/find/tt1375666');
+  assert.equal(calls[0].searchParams.get('external_source'), 'imdb_id');
+  assert.equal(await client.resolveId('series', 'tmdb:1399:7:1'), '1399');
+  assert.equal(calls.length, 1);
+});
+
+test('series metadata includes later seasons and retains IMDb video identity', async () => {
+  let concurrent = 0;
+  let maximum = 0;
+  const client = new TmdbClient({ apiKey: 'test-key', fetchImpl: async (input) => {
+    const pathname = new URL(input).pathname;
+    if (pathname.includes('/find/')) return new Response('{"tv_results":[{"id":1399}]}');
+    if (pathname.endsWith('/tv/1399')) return new Response(JSON.stringify({ name: 'Example', seasons: Array.from({ length: 8 }, (_, i) => ({ season_number: i + 1 })) }));
+    const season = Number(pathname.split('/').at(-1));
+    concurrent += 1;
+    maximum = Math.max(maximum, concurrent);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    concurrent -= 1;
+    return new Response(JSON.stringify({ episodes: [{ episode_number: 1, name: `Season ${season}` }] }));
+  } });
+  const meta = await client.meta('series', 'tt0944947');
+  assert.equal(meta.id, 'tt0944947');
+  assert.equal(meta.videos.length, 8);
+  assert.equal(meta.videos[7].id, 'tt0944947:8:1');
+  assert.ok(maximum <= 5 && maximum > 1);
+});
+
+test('stream and subtitles resources return standard signed subtitles and remove custom direct fields', async () => {
+  const app = createApp({
+    env: { VLESS_URL: 'configured-for-mock-streamer', PROXY_TOKEN: 'test-secret' },
+    providerDir: repoProviders,
+  });
+  const target = 'https://cnth2.shabakaty.cc/subtitle.vtt';
+  app.registry.getStreams = async () => [{
+    url: 'https://cdn.shabakaty.cc/video.mp4',
+    subtitles: [{ url: target, lang: 'ar' }, { url: 'https://unrelated.test/subtitle.vtt', lang: 'en' }],
+    tracks: [{ file: target, srclang: 'ar', kind: 'subtitles' }],
+    subtitle: target,
+    subUrl: target,
+  }];
+  const req = { method: 'GET', headers: { host: 'addon.example.test', 'x-forwarded-proto': 'https' }, url: '/stream/series/tmdb:1399:4:1.json' };
+  const streamResponse = jsonResponse();
+  await app.handler(req, streamResponse);
+  const stream = streamResponse.body.streams[0];
+  assert.equal(stream.subtitles.length, 1);
+  assert.equal(stream.subtitles[0].lang, 'ara');
+  assert.ok(stream.subtitles[0].id);
+  assert.equal(stream.tracks, undefined);
+  assert.equal(stream.subtitle, undefined);
+  assert.equal(stream.subUrl, undefined);
+  const signed = new URL(stream.subtitles[0].url);
+  assert.equal(signed.origin, 'https://addon.example.test');
+  assert.equal(signed.searchParams.get('url'), target);
+  assert.equal(signed.searchParams.get('sig'), crypto.createHmac('sha256', 'test-secret').update(target).digest('base64url'));
+  const subtitleResponse = jsonResponse();
+  await app.handler({ ...req, url: '/subtitles/series/filehash/videoID=tmdb%3A1399%3A4%3A1.json' }, subtitleResponse);
+  assert.deepEqual(subtitleResponse.body.subtitles, stream.subtitles);
+  const health = JSON.stringify(app.health());
+  assert.equal(health.includes('configured-for-mock-streamer'), false);
+  assert.equal(health.includes('test-secret'), false);
+});
+
+test('default CDN suffix allow-list rejects lookalike and arbitrary domains', async () => {
+  const app = createApp({ env: { VLESS_URL: 'configured', PROXY_TOKEN: 'secret' }, providerDir: repoProviders });
+  app.registry.getStreams = async () => [
+    { url: 'https://cdn.shabakaty.cc/video.mp4' },
+    { url: 'https://shabakaty.cc.evil.test/video.mp4' },
+    { url: 'https://evilshabakaty.cc/video.mp4' },
+    { url: 'https://127.0.0.1/video.mp4' },
+  ];
+  const response = jsonResponse();
+  await app.handler({ method: 'GET', url: '/stream/movie/tmdb:1.json', headers: { host: 'addon.test' } }, response);
+  assert.equal(response.body.streams.length, 1);
 });

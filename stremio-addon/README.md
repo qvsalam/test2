@@ -18,7 +18,7 @@ PROVIDERS_DIR=providers
 VLESS_URL=vless://...   # سرّ، لا تضعه داخل الكود أو manifest
 PROXY_TOKEN=رمز_عشوائي_طويل
 TMDB_API_KEY=مفتاح_TMDB
-STREAM_HOSTS=movie.vodu.me,isp.vodu.me,cinema.albox.co,pucinema.albox.co,cinemana.shabakaty.cc,cinemana.shabakaty.com,api-cinema.shashety.com,apitv.shashety.com,cdn.shashety.com
+STREAM_HOSTS=.vodu.me,.albox.co,.shabakaty.cc,.shabakaty.com,.shashety.com
 cd stremio-addon
 npm install
 npm start

@@ -8,17 +8,17 @@ const { parseMediaId } = require('./lib/ids');
 const { createProviderFetch } = require('./lib/relay-fetch');
 const { createProviderRegistry } = require('./lib/provider-loader');
 const { TmdbClient } = require('./lib/tmdb');
-const { maskedVlessConfig, parseVlessUrl, streamViaVless } = require('./lib/vless-client');
+const { parseVlessUrl, streamViaVless } = require('./lib/vless-client');
 
 const DEFAULT_PROVIDER_DIR = path.resolve(__dirname, '..', 'providers');
 
 function manifest() {
   return {
     id: 'com.qvsalam.iraq-scrapers.stremio',
-    version: '0.1.0',
+    version: '0.2.0',
     name: 'Iraq Scrapers',
     description: 'Arabic movie and series streams from the configured provider relay.',
-    resources: ['catalog', 'meta', 'stream'],
+    resources: ['catalog', 'meta', 'stream', 'subtitles'],
     types: ['movie', 'series'],
     idPrefixes: ['tmdb', 'tt'],
     catalogs: [
@@ -52,24 +52,31 @@ function json(res, status, body) {
 }
 
 function routeParts(pathname) {
-  const parts = pathname.split('/').filter(Boolean);
+  const parts = pathname.split('/').slice(1);
   if (parts.length < 1) return null;
   const resource = parts[0];
-  if (resource === 'manifest.json' || resource === 'manifest') return { resource: 'manifest' };
-  if (!['catalog', 'meta', 'stream'].includes(resource) || parts.length < 3) return null;
+  if (parts.length === 1 && (resource === 'manifest.json' || resource === 'manifest')) return { resource: 'manifest' };
+  if (!['catalog', 'meta', 'stream', 'subtitles'].includes(resource) || parts.length < 3 || parts.length > 4 || parts.some((part) => !part)) return null;
+  parts[parts.length - 1] = parts[parts.length - 1].replace(/\.json$/i, '');
   let id;
-  try { id = decodeURIComponent(parts.slice(2).join('/')); } catch (_) { return null; }
-  return {
+  try {
+    id = decodeURIComponent(parts[2]);
+    // Validate escapes without decoding query separators inside a value.
+    if (parts[3]) decodeURIComponent(parts[3]);
+  } catch (_) { return null; }
+  const route = {
     resource,
     type: parts[1] === 'tv' ? 'series' : parts[1],
-    id: id.replace(/\.json$/i, ''),
+    id,
   };
+  if (parts.length === 4) route.extra = Object.fromEntries(new URLSearchParams(parts[3]));
+  return route;
 }
 
 function requestOrigin(req, config) {
   if (config.publicBaseUrl) return config.publicBaseUrl.replace(/\/$/, '');
   const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  const protocol = forwarded || (req.socket && req.socket.encrypted ? 'https' : 'http');
+  const protocol = ['http', 'https'].includes(forwarded) ? forwarded : (req.socket && req.socket.encrypted ? 'https' : 'http');
   const host = String(req.headers.host || 'localhost').replace(/[\r\n]/g, '');
   return `${protocol}://${host}`;
 }
@@ -88,7 +95,8 @@ function streamHostAllowed(target, config) {
   try {
     const url = target instanceof URL ? target : new URL(target);
     const hostname = url.hostname.toLowerCase();
-    if (config.streamHosts.size && !config.streamHosts.has('*') && !config.streamHosts.has(hostname)) return false;
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+    if (config.streamHosts.size && ![...config.streamHosts].some((allowed) => allowed === hostname || (allowed.startsWith('.') && (hostname === allowed.slice(1) || hostname.endsWith(allowed))))) return false;
     // Do not turn the signed proxy into a path to local services. CDN URLs
     // remain allowed by default, while loopback/link-local/private literals
     // are rejected before the VLESS tunnel is opened.
@@ -109,7 +117,7 @@ function streamHostAllowed(target, config) {
 function signedProxyUrl(target, req, config) {
   if (!config.proxyStreams || !config.proxyToken || !config.vlessUrl) return target;
   const url = new URL(target);
-  if (!streamHostAllowed(url, config)) return target;
+  if (!streamHostAllowed(url, config)) return `${requestOrigin(req, config)}/unavailable`;
   const signature = proxySignature(url.toString(), config.proxyToken);
   return `${requestOrigin(req, config)}/proxy?url=${encodeURIComponent(url.toString())}&sig=${encodeURIComponent(signature)}`;
 }
@@ -136,6 +144,38 @@ function rewritePlaylist(text, baseUrl, req, config) {
   }).join('\n');
 }
 
+function subtitleLanguage(value) {
+  const language = String(value || 'und').trim().toLowerCase();
+  const aliases = { ar: 'ara', arabic: 'ara', 'العربية': 'ara', en: 'eng', english: 'eng', ku: 'kur', kurdish: 'kur', tr: 'tur', turkish: 'tur', fa: 'per', persian: 'per' };
+  return aliases[language] || language;
+}
+
+function streamSubtitles(stream, req, config) {
+  const entries = Array.isArray(stream.subtitles) ? [...stream.subtitles] : [];
+  if (Array.isArray(stream.tracks)) entries.push(...stream.tracks.filter((track) => !track.kind || track.kind === 'subtitles'));
+  for (const url of [stream.subtitle, stream.subUrl]) if (url && !entries.some((entry) => (entry.url || entry.file) === url)) entries.push({ url });
+  const seen = new Set();
+  return entries.flatMap((entry) => {
+    const raw = typeof entry === 'string' ? entry : entry?.url || entry?.file;
+    if (!raw || !streamHostAllowed(raw, config)) return [];
+    const target = new URL(raw).toString();
+    const lang = subtitleLanguage(entry.lang || entry.language || entry.srclang);
+    const key = `${target}\n${lang}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ id: crypto.createHash('sha256').update(key).digest('hex').slice(0, 24), url: signedProxyUrl(target, req, config), lang }];
+  });
+}
+
+function homePage(req, res, config) {
+  const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const manifestUrl = `${requestOrigin(req, config)}/manifest.json`;
+  const installUrl = manifestUrl.replace(/^https?:\/\//, 'stremio://');
+  const body = Buffer.from(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Iraq Scrapers — Stremio</title><style>body{font:18px system-ui;background:#101524;color:#edf1fa;max-width:680px;margin:12vh auto;padding:24px;line-height:1.8}a{color:#a3c5ff}button,.install{display:inline-block;background:#6959dc;color:white;border:0;border-radius:10px;padding:12px 20px;font:inherit;text-decoration:none;cursor:pointer}input{box-sizing:border-box;width:100%;padding:12px;margin:16px 0;font:14px monospace;border-radius:8px;border:1px solid #59647d;background:#1b2336;color:white}</style><h1>Iraq Scrapers</h1><p>إضافة أفلام ومسلسلات إلى Stremio عبر المزوّدات العراقية المتاحة.</p><p><a class="install" href="${escape(installUrl)}">ثبّت الإضافة في Stremio</a></p><label for="manifest">رابط الإضافة</label><input id="manifest" dir="ltr" readonly value="${escape(manifestUrl)}"><button id="copy">نسخ الرابط</button><p id="status" role="status"></p><p>تقدر تلصق الرابط في قسم الإضافات داخل Stremio. قد يتأخر الطلب الأول عندما تكون خدمة Render المجانية نائمة.</p><script>document.getElementById('copy').addEventListener('click',async()=>{const field=document.getElementById('manifest');try{await navigator.clipboard.writeText(field.value);document.getElementById('status').textContent='تم نسخ الرابط'}catch{field.focus();field.select();document.getElementById('status').textContent='حدد الرابط وانسخه يدوياً'}})</script></html>`);
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': body.length, 'cache-control': 'no-store' });
+  res.end(body);
+}
+
 function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAULT_PROVIDER_DIR, baseFetch = globalThis.fetch, streamer = streamViaVless } = {}) {
   const config = readConfig(env);
   const { providerFetch } = createProviderFetch({ config, baseFetch });
@@ -155,7 +195,9 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
     if (req.method === 'OPTIONS') return json(res, 204, {});
     if (req.method !== 'GET') return json(res, 405, { error: 'Only GET and OPTIONS are supported' });
 
-    const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    let requestUrl;
+    try { requestUrl = new URL(req.url || '/', 'http://localhost'); }
+    catch (_) { return json(res, 400, { error: 'Invalid request URL' }); }
     const route = routeParts(requestUrl.pathname);
     if (!route) return json(res, 404, { error: 'Not found' });
 
@@ -164,8 +206,12 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
       if (!['movie', 'series'].includes(route.type)) return json(res, 400, { error: 'Unsupported type' });
 
       if (route.resource === 'catalog') {
-        const search = requestUrl.searchParams.get('search') || '';
-        const skip = Number(requestUrl.searchParams.get('skip') || 0);
+        const expectedId = route.type === 'movie' ? 'iraq-movies' : 'iraq-series';
+        if (route.id !== expectedId) return json(res, 200, { metas: [] });
+        const extra = { ...Object.fromEntries(requestUrl.searchParams), ...route.extra };
+        const search = extra.search || '';
+        const skip = Number(extra.skip || 0);
+        if (!Number.isSafeInteger(skip) || skip < 0) return json(res, 200, { metas: [] });
         const page = Math.floor(Math.max(skip, 0) / 20) + 1;
         const metas = (await tmdb.catalog(route.type, search, page)) || [];
         return json(res, 200, { metas });
@@ -176,22 +222,30 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
         return json(res, 200, { meta: meta || { id: route.id, type: route.type, name: route.id, videos: [] } });
       }
 
-      const parsed = parseMediaId(route.id, route.type);
-      if (!parsed) return json(res, 200, { streams: [] });
+      const responseKey = route.resource === 'subtitles' ? 'subtitles' : 'streams';
+      const extra = { ...Object.fromEntries(requestUrl.searchParams), ...route.extra };
+      const parsed = parseMediaId(route.resource === 'subtitles' && extra.videoID ? extra.videoID : route.id, route.type);
+      if (!parsed || (route.type === 'series' && (parsed.season === undefined || parsed.episode === undefined))) return json(res, 200, { [responseKey]: [] });
       const resolvedId = parsed.tmdbId || await tmdb.resolveId(route.type, parsed.imdbId);
-      if (!resolvedId) return json(res, 200, { streams: [] });
-      const streams = await registry.getStreams(resolvedId, route.type, parsed.season, parsed.episode);
+      if (!resolvedId) return json(res, 200, { [responseKey]: [] });
       // Do not leak direct provider URLs when stream proxying is enabled but
       // its credentials/configuration are missing.
       if (config.proxyStreams && (!config.vlessUrl || !config.proxyToken)) {
-        return json(res, 200, { streams: [] });
+        return json(res, 200, { [responseKey]: [] });
+      }
+      const streams = await registry.getStreams(resolvedId, route.type, parsed.season, parsed.episode);
+      if (route.resource === 'subtitles') {
+        const subtitles = streams.flatMap((stream) => streamSubtitles(stream, req, config));
+        return json(res, 200, { subtitles: [...new Map(subtitles.map((subtitle) => [subtitle.id, subtitle])).values()] });
       }
       return json(res, 200, {
         streams: streams.map((stream) => {
           if (config.proxyStreams && !streamHostAllowed(stream.url, config)) return null;
+          const { tracks, subtitle, subUrl, subtitles: _subtitles, ...publicStream } = stream;
           return {
-            ...stream,
+            ...publicStream,
             url: signedProxyUrl(stream.url, req, config),
+            subtitles: streamSubtitles(stream, req, config),
             name: stream.name || stream.provider || 'Iraq Scrapers',
             title: stream.title || stream.quality || 'Stream',
             behaviorHints: stream.behaviorHints || {},
@@ -204,6 +258,7 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
       if (route.resource === 'catalog') return json(res, 200, { metas: [] });
       if (route.resource === 'meta') return json(res, 200, { meta: null });
       if (route.resource === 'stream') return json(res, 200, { streams: [] });
+      if (route.resource === 'subtitles') return json(res, 200, { subtitles: [] });
       return json(res, 500, { error: 'Internal error' });
     }
   }
@@ -254,14 +309,18 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
     registry,
     handler: handle,
     proxy: handleProxy,
+    home: (req, res) => homePage(req, res, config),
     health: () => ({
       ok: true,
       addon: 'Iraq Scrapers',
-      protocol: ['manifest', 'catalog', 'meta', 'stream'],
+      protocol: ['manifest', 'catalog', 'meta', 'stream', 'subtitles'],
       config: publicConfig(config),
       vless: (() => {
-        try { return config.vlessUrl ? maskedVlessConfig(parseVlessUrl(config.vlessUrl)) : { configured: false }; }
-        catch (error) { return { configured: false, error: String(error.message || error) }; }
+        try {
+          if (!config.vlessUrl) return { configured: false };
+          parseVlessUrl(config.vlessUrl);
+          return { configured: true, valid: true };
+        } catch (_) { return { configured: true, valid: false }; }
       })(),
       providers: registry.health(),
     }),
@@ -271,13 +330,12 @@ function createApp({ env = process.env, providerDir = env.PROVIDERS_DIR || DEFAU
 if (require.main === module) {
   const app = createApp();
   const server = http.createServer((req, res) => {
-    if (req.method === 'GET' && (req.url === '/' || req.url?.startsWith('/health'))) {
-      return json(res, 200, app.health());
-    }
-    if (req.url?.startsWith('/proxy')) {
-      let requestUrl;
-      try { requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`); }
-      catch (_) { return json(res, 400, { error: 'Invalid request URL' }); }
+    let requestUrl;
+    try { requestUrl = new URL(req.url || '/', 'http://localhost'); }
+    catch (_) { return json(res, 400, { error: 'Invalid request URL' }); }
+    if (req.method === 'GET' && requestUrl.pathname === '/') return app.home(req, res);
+    if (req.method === 'GET' && requestUrl.pathname === '/health') return json(res, 200, app.health());
+    if (requestUrl.pathname === '/proxy') {
       return app.proxy(req, res, requestUrl);
     }
     return app.handler(req, res);

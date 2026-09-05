@@ -1,6 +1,8 @@
 services:
   - type: web
     name: iraq-stremio-addon
+    plan: free
+    region: frankfurt
     runtime: node
     rootDir: .
     buildCommand: cd stremio-addon && npm install

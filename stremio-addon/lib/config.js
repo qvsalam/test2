@@ -65,16 +65,15 @@ function readConfig(env = process.env) {
     allowDirectProviderFetch: asBoolean(env.ALLOW_DIRECT_PROVIDER_FETCH, false),
     proxyStreams: asBoolean(env.PROXY_STREAMS, true),
     providerHosts,
-    // Media URLs are commonly signed CDN URLs on a hostname that is different
-    // from the provider API. With no STREAM_HOSTS value the HMAC-signed proxy
-    // accepts any public HTTP(S) hostname; setting the variable restricts it.
-    streamHosts: new Set(csv(env.STREAM_HOSTS, [])),
+    // A leading dot allows the domain itself and its subdomains. Provider CDN
+    // hosts differ from API hosts, but arbitrary Internet targets stay blocked.
+    streamHosts: new Set(csv(env.STREAM_HOSTS, ['.vodu.me', '.albox.co', '.shabakaty.cc', '.shabakaty.com', '.shashety.com'])),
     providerTimeoutMs: asPositiveInt(env.PROVIDER_TIMEOUT_MS, 15000, 1000),
     relayTimeoutMs: asPositiveInt(env.RELAY_TIMEOUT_MS, 20000, 1000),
     maxResponseBytes: asPositiveInt(env.MAX_RESPONSE_BYTES, 64 * 1024 * 1024, 64 * 1024),
     maxPlaylistBytes: asPositiveInt(env.MAX_PLAYLIST_BYTES, 4 * 1024 * 1024, 64 * 1024),
-    maxMetaSeasons: asPositiveInt(env.MAX_META_SEASONS, 3, 1),
-    maxMetaEpisodes: asPositiveInt(env.MAX_META_EPISODES, 200, 1),
+    maxMetaSeasons: asPositiveInt(env.MAX_META_SEASONS, 100, 1),
+    maxMetaEpisodes: asPositiveInt(env.MAX_META_EPISODES, 5000, 1),
   };
 }
 
