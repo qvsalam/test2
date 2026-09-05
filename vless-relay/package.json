@@ -1,0 +1,16 @@
+{
+  "name": "iraq-vless-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small Render relay that sends allow-listed provider HTTP(S) requests through a VLESS WebSocket exit.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
