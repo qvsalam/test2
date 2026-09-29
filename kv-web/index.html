@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1457ae">
+<meta name="robots" content="noindex,nofollow">
+<title>KV IRAQ</title>
+<style>
+:root{--b:#1457ae;--b2:#278fe0;--deep:#0a3d7c;--bg:#f5f7fb;--text:#242634;--muted:#8a8f99;--line:#e7e9ee}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,input{font:inherit}button{cursor:pointer}.hidden{display:none!important}.screen{min-height:100dvh}
+.login{background:linear-gradient(180deg,#1658ad 0 29%,#fff 29% 100%)}
+.hero{height:31dvh;min-height:290px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:max(12px,env(safe-area-inset-top))}
+.logo{width:120px;height:120px;border-radius:50%;background:#fff;box-shadow:0 8px 22px #0002;display:grid;place-items:center;position:relative}
+.logo:before{content:"⚡";font-size:62px;color:#f0b21b;filter:drop-shadow(0 2px 0 #0c4f9f)}.logo:after{content:"KV";position:absolute;bottom:18px;font-size:20px;font-weight:900;color:#0e57a9;letter-spacing:2px}
+.title{font-size:38px;font-weight:900;letter-spacing:2px;margin-top:16px}.sub{font-size:18px;font-weight:700;color:#dce8f7;margin-top:6px}
+.sheet{min-height:69dvh;background:#fff;border-radius:46px 46px 0 0;padding:34px 22px 48px}
+.wrap{max-width:620px;margin:auto}.loc{border:1px solid #e2e5e9;border-radius:22px;padding:20px;box-shadow:0 8px 20px #132b5010;margin-bottom:25px}.loc-title{text-align:center;font-weight:900;font-size:18px}.loc-title b{color:#33b86b}.rule{height:1px;background:#e3e3e3;margin:17px 0}.org{display:grid;grid-template-columns:1.2fr 1fr;gap:10px}.chip{padding:13px;border-radius:14px;line-height:1.5}.chip small{display:block;font-weight:800;margin-bottom:5px}.chip strong{font-size:13px}.company{background:#eef9f8;border:1px solid #b7dedb;color:#13918e}.branch{background:#fff8eb;border:1px solid #f0d19a;color:#e99b16}.branch strong{font-size:18px}
+form{display:grid;gap:14px}.field{height:66px;border:1px solid #edf0f3;background:#fff;border-radius:16px;display:flex;align-items:center;box-shadow:0 7px 18px #173e6810;overflow:hidden}.field span{width:54px;text-align:center;color:var(--b);font-size:22px}.field input{border:0;outline:0;width:100%;height:100%;background:transparent;text-align:right;padding:0 4px 0 17px;font-size:17px;font-weight:800;color:#333}.field input::placeholder{color:#a2a6ad}.center{border-color:#d4d7db;box-shadow:none}.login-btn{height:64px;border:0;border-radius:16px;background:var(--b);color:#fff;font-size:20px;font-weight:900;box-shadow:0 9px 20px #1457ae45;margin-top:6px}.login-btn:disabled{opacity:.65}.err{margin:0;padding:12px 14px;border-radius:12px;background:#fff0f0;border:1px solid #efc4c4;color:#b42525;font-weight:700;line-height:1.55}.hint{font-size:12px;color:#858b95;text-align:center;margin-top:3px}
+.home{background:#f7f8fb}.top{position:relative;min-height:520px;padding:64px 22px 48px;color:#fff;background:linear-gradient(145deg,#2a9ae8,#155fac 60%,#0b458e);border-radius:0 0 48px 48px;overflow:hidden}.top:before,.top:after{content:"";position:absolute;border-radius:50%;background:#ffffff0c}.top:before{width:260px;height:260px;left:-120px;top:-100px}.top:after{width:320px;height:320px;right:-180px;bottom:-180px}.menu{position:absolute;top:22px;right:18px;width:45px;height:45px;border:0;border-radius:13px;background:#ffffff1c;color:#fff;font-size:25px}.welcome{display:flex;gap:13px;align-items:center;margin:12px auto 24px;max-width:620px}.avatar{width:54px;height:54px;border-radius:50%;background:#ffffff21;border:2px solid #ffffff70;display:grid;place-items:center;font-size:26px}.welcome h1{font-size:23px;margin:0 0 5px}.welcome p{margin:0;color:#d9e9fa;font-weight:700}.stats{max-width:620px;margin:0 auto 22px;background:#ffffff18;border:1px solid #ffffff22;border-radius:22px;display:grid;grid-template-columns:repeat(3,1fr);backdrop-filter:blur(9px)}.stat{padding:18px 6px;text-align:center}.stat+ .stat{border-right:1px solid #ffffff24}.stat b{display:block;font-size:24px}.stat small{display:block;margin-top:6px;color:#dceafb;font-weight:700}.search{max-width:620px;margin:0 auto;display:flex;align-items:center;background:#fff;border-radius:18px;height:68px;box-shadow:0 12px 28px #06346738;overflow:hidden}.search input{border:0;outline:0;flex:1;height:100%;text-align:right;padding:0 14px;font-size:18px;font-weight:900;color:#293244}.search button{width:62px;height:100%;border:0;background:transparent;color:var(--b);font-size:25px}.status{max-width:620px;margin:12px auto 0;text-align:center;color:#dbeaff;font-size:13px;font-weight:700}
+.body{max-width:620px;margin:0 auto;padding:24px 18px 70px}.home-err{background:#fff0f0;color:#a92a2a;border:1px solid #f0c7c7;padding:14px;border-radius:14px;font-weight:700;line-height:1.6}.choices{display:grid;gap:10px}.choice{border:1px solid #e6e9ed;background:#fff;border-radius:15px;padding:15px;text-align:right;box-shadow:0 6px 16px #0000000b}.choice b{display:block;color:#174f91;font-size:18px}.choice span{color:#777;font-size:13px}
+.overlay{position:fixed;inset:0;background:#071b3a99;display:grid;place-items:center;padding:20px;z-index:20;backdrop-filter:blur(3px)}.card{width:min(100%,520px);background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 24px 70px #0006;max-height:92dvh;overflow-y:auto}.card-head{position:relative;background:linear-gradient(145deg,#218fe2,#0d57a7);color:#fff;text-align:center;padding:24px 20px}.close{position:absolute;top:12px;left:14px;width:38px;height:38px;border:0;border-radius:50%;background:#ffffff1f;color:#fff;font-size:28px}.bolt{font-size:38px}.card-head small{display:block;color:#d9ebfb;font-weight:700}.card-head strong{font-size:36px}.details{padding:10px 20px}.row{display:grid;grid-template-columns:40px 105px 1fr;align-items:center;gap:8px;padding:14px 0;border-bottom:1px solid #edf0f3}.ic{width:34px;height:34px;border-radius:10px;background:#eef5ff;display:grid;place-items:center;color:#1457ae}.lab{color:#8a8f99;font-weight:700}.row strong{text-align:left;direction:rtl;font-size:15px}.foot{padding:18px 20px 24px}.gps{display:block;text-align:center;text-decoration:none;background:#17934a;color:#fff;border-radius:15px;padding:15px;font-weight:900}.gps.off{background:#a8adb5}
+.drawer{position:fixed;inset:0;background:#05152d8a;z-index:30}.drawer-box{position:absolute;top:0;right:0;height:100%;width:min(82%,340px);background:#fff;padding:28px 22px;box-shadow:-15px 0 35px #0002}.drawer-box h2{margin:50px 0 5px}.drawer-box p{color:#777}.drawer-box button{width:100%;border:0;border-radius:12px;padding:13px;margin-top:10px;font-weight:800}.logout{background:#fff0f0;color:#b72e2e}.reload{background:#eef5ff;color:#1457ae}
+@media(min-width:700px){.sheet{padding-top:42px}.top{padding-top:74px}}
+</style>
+</head>
+<body>
+<section id="loginScreen" class="screen login">
+  <div class="hero"><div class="logo"></div><div class="title">KV IRAQ</div><div class="sub">مساعد الفني الذكي</div></div>
+  <div class="sheet"><div class="wrap">
+    <div class="loc"><div class="loc-title"><b>●</b> تم تحديد الموقع التلقائي</div><div class="rule"></div><div class="org"><div class="chip company"><small>الشركة</small><strong>الشركة العامة لتوزيع كهرباء الجنوب</strong></div><div class="chip branch"><small>الفرع</small><strong>فرع البصرة</strong></div></div></div>
+    <form id="loginForm" autocomplete="on">
+      <label class="field"><span>👤</span><input id="username" autocomplete="username" placeholder="اسم المستخدم" required></label>
+      <label class="field"><span>🔒</span><input id="password" type="password" autocomplete="current-password" placeholder="الرمز السري" required></label>
+      <label class="field"><span>☎</span><input id="phone" inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف" required></label>
+      <label class="field center"><span>⌄</span><input id="center" placeholder="اسم مركز الصيانة" required></label>
+      <button id="loginBtn" class="login-btn" type="submit">تسجيل الدخول</button>
+      <p id="loginError" class="err hidden"></p>
+      <div class="hint">كلمة السر لا تُحفظ في الموقع.</div>
+    </form>
+  </div></div>
+</section>
+
+<section id="homeScreen" class="screen home hidden">
+  <header class="top">
+    <button id="menuBtn" class="menu">☰</button>
+    <div class="welcome"><div class="avatar">👤</div><div><h1>مرحباً، <span id="welcomeName">المستخدم</span></h1><p id="welcomeCenter">مركز الصيانة</p></div></div>
+    <div class="stats"><div class="stat"><b id="tCount">—</b><small>المحولات</small></div><div class="stat"><b id="fCount">—</b><small>المغذيات</small></div><div class="stat"><b id="active">نشط</b><small>المركز</small></div></div>
+    <form id="searchForm" class="search"><button type="submit">⌕</button><input id="query" inputmode="numeric" placeholder="بحث برقم المحولة..."><button id="voice" type="button">🎙</button></form>
+    <div id="status" class="status">جاري تحميل البيانات…</div>
+  </header>
+  <main class="body"><div id="choices" class="choices hidden"></div><div id="homeError" class="home-err hidden"></div></main>
+</section>
+
+<div id="overlay" class="overlay hidden">
+  <div class="card">
+    <div class="card-head"><button id="close" class="close">×</button><div class="bolt">⚡</div><small>رقم المحولة</small><strong id="mNo">—</strong></div>
+    <div class="details">
+      <div class="row"><span class="ic">⚡</span><span class="lab">المغذي</span><strong id="dFeeder">—</strong></div>
+      <div class="row"><span class="ic">◆</span><span class="lab">الاسم</span><strong id="dName">—</strong></div>
+      <div class="row"><span class="ic">◎</span><span class="lab">المنشأ</span><strong id="dOrigin">—</strong></div>
+      <div class="row"><span class="ic">▭</span><span class="lab">السعة</span><strong id="dCapacity">—</strong></div>
+      <div class="row"><span class="ic">▤</span><span class="lab">نوع المحولة</span><strong id="dType">—</strong></div>
+      <div class="row"><span class="ic">▼</span><span class="lab">قاطع الدورة</span><strong id="dBreaker">—</strong></div>
+    </div>
+    <div class="foot"><a id="gps" class="gps hidden" target="_blank" rel="noopener">➤ الذهاب للموقع (GPS)</a><div id="noGps" class="gps off">الموقع غير متوفر</div></div>
+  </div>
+</div>
+
+<div id="drawer" class="drawer hidden"><div class="drawer-box"><button id="drawerClose" class="close" style="background:#eef3f8;color:#174f91">×</button><h2 id="drawerName">المستخدم</h2><p id="drawerCenter">مركز الصيانة</p><button id="reload" class="reload">تحديث البيانات</button><button id="logout" class="logout">تسجيل الخروج</button></div></div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const el={login:$('loginScreen'),home:$('homeScreen'),form:$('loginForm'),user:$('username'),pass:$('password'),phone:$('phone'),center:$('center'),loginBtn:$('loginBtn'),loginError:$('loginError'),welcomeName:$('welcomeName'),welcomeCenter:$('welcomeCenter'),tCount:$('tCount'),fCount:$('fCount'),active:$('active'),searchForm:$('searchForm'),query:$('query'),status:$('status'),homeError:$('homeError'),choices:$('choices'),overlay:$('overlay'),close:$('close'),mNo:$('mNo'),dFeeder:$('dFeeder'),dName:$('dName'),dOrigin:$('dOrigin'),dCapacity:$('dCapacity'),dType:$('dType'),dBreaker:$('dBreaker'),gps:$('gps'),noGps:$('noGps'),menu:$('menuBtn'),drawer:$('drawer'),drawerClose:$('drawerClose'),drawerName:$('drawerName'),drawerCenter:$('drawerCenter'),reload:$('reload'),logout:$('logout'),voice:$('voice')};
+let auth={token:'',device:''},profile=null,records=[];
+const clean=v=>v==null?'':String(v).trim();
+const norm=s=>clean(s).normalize('NFKD').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g,' ').toLowerCase();
+function device(){let d=localStorage.getItem('kv_device');if(!d){d=crypto.randomUUID?crypto.randomUUID():'web-'+Date.now()+'-'+Math.random().toString(36).slice(2);localStorage.setItem('kv_device',d)}return d}
+function showErr(node,msg){node.textContent=msg||'';node.classList.toggle('hidden',!msg)}
+function authHeaders(){const h={'accept':'application/json'};if(auth.token)h.authorization='Bearer '+auth.token;if(auth.device)h['x-device-id']=auth.device;return h}
+async function api(url,opt={}){const r=await fetch(url,{credentials:'same-origin',cache:'no-store',...opt,headers:{...authHeaders(),...(opt.headers||{})}});const t=await r.text();let data;try{data=JSON.parse(t.replace(/^\uFEFF/,''))}catch{data={raw:t}}if(!r.ok)throw new Error(clean(data.message||data.error||data.raw)||'خطأ من السيرفر '+r.status);return data}
+function findValue(root,names){const want=new Set(names.map(x=>x.toLowerCase())),seen=new Set();let out='';function walk(v,d=0){if(out||!v||typeof v!=='object'||seen.has(v)||d>8)return;seen.add(v);for(const[k,val]of Object.entries(v)){if(want.has(String(k).toLowerCase())&&typeof val==='string'&&val.trim()){out=val.trim();return}if(val&&typeof val==='object')walk(val,d+1)}}walk(root);return out}
+function explicitFail(data){const st=String(data&&data.status||'').toLowerCase();if(data&&data.success===false)return true;if(['error','failed','fail','invalid','unauthorized'].includes(st))return true;const m=norm(data&& (data.message||data.error||data.raw)||'');return /غير صحيح|غير صالح|فشل|مرفوض|خطا|unauthorized|invalid credential|wrong password/.test(m)}
+function pick(o,keys){for(const k of keys)if(o&&Object.prototype.hasOwnProperty.call(o,k)&&clean(o[k])!=='')return o[k];return ''}
+function num(v){const n=Number(String(v??'').replace(/[^0-9.+-]/g,''));return Number.isFinite(n)?n:null}
+function collect(root){const out=[],seen=new Set();function walk(v,d=0){if(v==null||d>8)return;if(Array.isArray(v)){v.forEach(x=>walk(x,d+1));return}if(typeof v==='object'){if(seen.has(v))return;seen.add(v);const k=Object.keys(v);if(k.some(x=>['transformer_no','feeder','capacity','zkva','circuit_breaker','clean_lat','clean_lon','official_name'].includes(x)))out.push(v);Object.values(v).forEach(x=>walk(x,d+1))}}walk(root);return out}
+function rec(o){return{no:clean(pick(o,['transformer_no','transformer_number','transformer','number','no','id'])),feeder:clean(pick(o,['feeder','feeder_name','line'])),name:clean(pick(o,['official_name','name','transformer_name','location','label'])),origin:clean(pick(o,['origin','manufacturer','made_in','country'])),capacity:clean(pick(o,['capacity','zkva','kva','power'])),type:clean(pick(o,['type','transformer_type','category'])),breaker:clean(pick(o,['circuit_breaker','breaker','cb'])),center:clean(pick(o,['maintenance_center','center_name','center_info','center_inf','center'])),lat:num(pick(o,['clean_lat','latitude','lat'])),lon:num(pick(o,['clean_lon','longitude','lon','lng']))}}
+function dedupe(a){const m=new Map();for(const r of a){const k=[r.no,r.feeder,r.center,r.lat,r.lon].join('|');if(!m.has(k))m.set(k,r)}return[...m.values()]}
+async function login(e){e.preventDefault();showErr(el.loginError,'');const p={username:clean(el.user.value),password:el.pass.value,phone_number:clean(el.phone.value),maintenance_center:clean(el.center.value),device_id:device()};if(!p.username||!p.password||!p.phone_number||!p.maintenance_center)return showErr(el.loginError,'كمّل جميع الحقول.');el.loginBtn.disabled=true;el.loginBtn.textContent='جاري الدخول…';try{auth={token:'',device:p.device_id};sessionStorage.removeItem('kv_auth');const data=await api('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});if(explicitFail(data))throw new Error(clean(data.message||data.error||data.raw)||'بيانات الدخول غير مقبولة');auth.token=findValue(data,['token','access_token','accesstoken','auth_token','authtoken','jwt','bearer']);sessionStorage.setItem('kv_auth',JSON.stringify(auth));profile={username:p.username,phone:p.phone_number,center:p.maintenance_center};localStorage.setItem('kv_profile',JSON.stringify(profile));el.pass.value='';enter();await load()}catch(err){showErr(el.loginError,'تعذر تسجيل الدخول: '+err.message)}finally{el.loginBtn.disabled=false;el.loginBtn.textContent='تسجيل الدخول'}}
+function enter(){el.login.classList.add('hidden');el.home.classList.remove('hidden');el.welcomeName.textContent=profile.username;el.welcomeCenter.textContent=profile.center;el.drawerName.textContent=profile.username;el.drawerCenter.textContent=profile.center;window.scrollTo(0,0)}
+async function load(){records=[];showErr(el.homeError,'');el.status.textContent='جاري تحميل بيانات المركز…';try{let list=[];try{const d=await api('/api/center?center_name='+encodeURIComponent(profile.center));list=dedupe(collect(d).map(rec))}catch{}if(!list.length){const d=await api('/api/structure');list=dedupe(collect(d).map(rec))}const c=norm(profile.center);const f=list.filter(x=>!x.center||norm(x.center)===c||norm(x.center).includes(c)||c.includes(norm(x.center)));records=f.length?f:list;el.tCount.textContent=records.length.toLocaleString('ar-IQ');el.fCount.textContent=new Set(records.map(x=>norm(x.feeder)).filter(Boolean)).size.toLocaleString('ar-IQ');el.active.textContent='نشط';el.status.textContent='تم تحميل '+records.length.toLocaleString('ar-IQ')+' محولة';if(!records.length)throw new Error('السيرفر رد لكن ما ظهرت سجلات محولات')}catch(err){el.status.textContent='تعذر تحميل البيانات';showErr(el.homeError,'تعذر جلب البيانات الفعلية: '+err.message)}}
+function search(e){e&&e.preventDefault();showErr(el.homeError,'');el.choices.innerHTML='';el.choices.classList.add('hidden');const q=norm(el.query.value).replace(/^0+/,'');if(!q)return showErr(el.homeError,'اكتب رقم المحولة أولاً.');const exact=records.filter(r=>norm(r.no).replace(/^0+/,'')===q);if(exact.length===1)return details(exact[0]);const items=exact.length?exact:records.filter(r=>norm(r.no).includes(q)).slice(0,25);if(!items.length)return showErr(el.homeError,'ما لكيت محولة برقم '+el.query.value);for(const r of items){const b=document.createElement('button');b.className='choice';b.type='button';b.innerHTML='<b>محولة '+esc(r.no||'—')+'</b><span>'+esc(r.feeder||r.name||'')+'</span>';b.onclick=()=>details(r);el.choices.appendChild(b)}el.choices.classList.remove('hidden')}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function details(r){el.mNo.textContent=r.no||'—';el.dFeeder.textContent=r.feeder||'—';el.dName.textContent=r.name||'—';el.dOrigin.textContent=r.origin||'—';el.dCapacity.textContent=r.capacity?(/kva/i.test(r.capacity)?r.capacity:'KVA '+r.capacity):'—';el.dType.textContent=r.type||'—';el.dBreaker.textContent=r.breaker||'—';const gps=Number.isFinite(r.lat)&&Number.isFinite(r.lon);el.gps.classList.toggle('hidden',!gps);el.noGps.classList.toggle('hidden',gps);if(gps)el.gps.href='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(r.lat+','+r.lon);el.overlay.classList.remove('hidden');document.body.style.overflow='hidden'}
+function close(){el.overlay.classList.add('hidden');document.body.style.overflow=''}
+function drawer(on){el.drawer.classList.toggle('hidden',!on);document.body.style.overflow=on?'hidden':''}
+function logout(){auth={token:'',device:device()};records=[];profile=null;sessionStorage.removeItem('kv_auth');localStorage.removeItem('kv_profile');drawer(false);el.home.classList.add('hidden');el.login.classList.remove('hidden');el.pass.value=''}
+el.form.addEventListener('submit',login);el.searchForm.addEventListener('submit',search);el.close.onclick=close;el.overlay.onclick=e=>{if(e.target===el.overlay)close()};el.menu.onclick=()=>drawer(true);el.drawerClose.onclick=()=>drawer(false);el.reload.onclick=async()=>{drawer(false);await load()};el.logout.onclick=logout;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(SR){const r=new SR();r.lang='ar-IQ';r.interimResults=false;el.voice.onclick=()=>{try{r.start()}catch{}};r.onresult=e=>{el.query.value=e.results[0][0].transcript.replace(/[^0-9٠-٩]/g,'');search()}}else el.voice.onclick=()=>showErr(el.homeError,'البحث الصوتي غير مدعوم بهذا المتصفح.');
+try{const a=JSON.parse(sessionStorage.getItem('kv_auth')||'null');if(a)auth={token:a.token||'',device:a.device||device()};else auth.device=device()}catch{auth.device=device()}
+try{const p=JSON.parse(localStorage.getItem('kv_profile')||'null');if(p){el.user.value=p.username||'';el.phone.value=p.phone||'';el.center.value=p.center||''}}catch{}
+})();
+</script>
+</body>
+</html>
